@@ -1,0 +1,50 @@
+@import 'tailwindcss';
+@import './fonts.css';
+/* El orden importa: primero la capa semántica de Untitled UI (sin modificar,
+   para poder actualizarla), después la reasignación con la paleta propia. */
+@import './untitled-theme.css';
+@import './theme.css';
+
+@plugin "tailwindcss-animate";
+@plugin "tailwindcss-react-aria-components";
+
+/* Untitled UI conmuta el tema por clase, no por media query. Eso permite que
+   el toggle gane sobre la preferencia del sistema sin dejar de respetarla como
+   valor inicial (ver ThemeProvider). */
+@custom-variant dark (&:where(.dark-mode, .dark-mode *));
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  .dark-mode {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Anillo de foco único para toda la app. Definido una vez acá en lugar de
+     por componente: así ningún control puede quedarse sin foco visible por
+     olvido, y `outline: none` nunca aparece sin reemplazo.
+     El offset es lo que lo hace legible sobre cualquier superficie, incluido
+     el mapa, donde el color de fondo es impredecible. */
+  :focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-chip);
+  }
+}
+
+/* Todo dato numérico que se actualiza en vivo. Obligatoria, no opcional:
+   sin tabular-nums un `1` es más angosto que un `8` y la velocidad tiembla
+   de ancho en cada actualización. */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}

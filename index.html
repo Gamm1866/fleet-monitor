@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Monitor de flota</title>
+    <script>
+      // Aplica el tema antes del primer pintado. Sin esto, React monta después
+      // del primer frame y un operador en modo oscuro se come un destello
+      // blanco a pantalla completa en cada recarga — que a las tres de la
+      // mañana no es un detalle estético.
+      ;(function () {
+        var stored = localStorage.getItem('fleet-monitor-theme')
+        var isDark =
+          stored === 'dark' ||
+          (stored !== 'light' &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches)
+        if (isDark) document.documentElement.classList.add('dark-mode')
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
