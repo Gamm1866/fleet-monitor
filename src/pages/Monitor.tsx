@@ -4,7 +4,21 @@ import { VehicleList } from '@/components/panel/VehicleList'
 import { VehiclePanel } from '@/components/panel/VehiclePanel'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { useFleet } from '@/hooks/use-fleet'
+import { useRoute } from '@/hooks/use-route'
 import { formatTime } from '@/lib/format'
+import { ROUTE_WINDOW_HOURS } from '@/lib/traccar'
+
+/**
+ * El alta de vehículos vive en Traccar, no acá.
+ *
+ * El proxy guarda las credenciales de la cuenta y está limitado a GET sobre
+ * dos recursos. Abrirlo a POST para crear dispositivos convertiría la URL
+ * pública del deploy en un relay de escritura contra la cuenta: cualquiera que
+ * la conozca podría dar de alta o modificar vehículos, y con la API de Traccar,
+ * enviar comandos al equipo. Un monitor de solo lectura es una decisión, no una
+ * carencia; el alta se hace donde ya existe control de acceso por usuario.
+ */
+const TRACCAR_ADMIN_URL = 'https://demo.traccar.org'
 
 export default function Monitor() {
   const { data, isPending, isError, error, isFetching, dataUpdatedAt } = useFleet()
@@ -19,6 +33,11 @@ export default function Monitor() {
 
   const handleSelect = useCallback((id: number) => setPickedId(id), [])
 
+  const { data: routePositions } = useRoute(selected?.id)
+  const route = routePositions?.map(
+    (position): [number, number] => [position.latitude, position.longitude],
+  )
+
   return (
     <div className="flex h-dvh flex-col bg-surface">
       <header className="flex items-center justify-between gap-4 border-b border-border-subtle px-6 py-3">
@@ -26,7 +45,17 @@ export default function Monitor() {
           <h1 className="text-title text-text-primary">Monitor de flota</h1>
           <p className="text-label uppercase text-text-tertiary">Tiempo real</p>
         </div>
-        <ThemeToggle />
+        <div className="flex items-center gap-4">
+          <a
+            href={TRACCAR_ADMIN_URL}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="rounded-control text-data-sm text-text-secondary underline underline-offset-4 hover:text-text-primary"
+          >
+            Administrar vehículos ↗
+          </a>
+          <ThemeToggle />
+        </div>
       </header>
 
       {isError ? (
@@ -48,6 +77,7 @@ export default function Monitor() {
           vehicles={vehicles}
           selectedId={selected?.id}
           onSelect={handleSelect}
+          route={route}
         />
 
         <div className="flex min-h-0 flex-col overflow-y-auto border-t border-border-subtle lg:border-l lg:border-t-0">
@@ -64,7 +94,12 @@ export default function Monitor() {
               La cuenta no tiene vehículos registrados.
             </p>
           ) : (
-            <VehiclePanel vehicle={selected} loading={isPending} />
+            <VehiclePanel
+              vehicle={selected}
+              loading={isPending}
+              routePoints={route?.length}
+              routeWindowHours={ROUTE_WINDOW_HOURS}
+            />
           )}
 
           <footer className="mt-auto flex items-center gap-2 border-t border-border-subtle px-6 py-3 text-data-sm text-text-tertiary">

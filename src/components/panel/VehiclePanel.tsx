@@ -8,6 +8,9 @@ import type { Vehicle } from '@/lib/traccar'
 interface VehiclePanelProps {
   vehicle?: Vehicle
   loading: boolean
+  /** Puntos del recorrido dibujado en el mapa. */
+  routePoints?: number
+  routeWindowHours: number
 }
 
 /**
@@ -17,7 +20,12 @@ interface VehiclePanelProps {
  * navega con teclado o lector de pantalla obtiene acá la misma información,
  * completa, sin tener que interpretar píxeles.
  */
-export function VehiclePanel({ vehicle, loading }: VehiclePanelProps) {
+export function VehiclePanel({
+  vehicle,
+  loading,
+  routePoints,
+  routeWindowHours,
+}: VehiclePanelProps) {
   const position = vehicle?.position
   // Con el dispositivo en silencio, todo lo que sigue en pantalla es un
   // recuerdo. La interfaz tiene que decirlo: mostrar "27,8 km/h" al lado de
@@ -99,6 +107,22 @@ export function VehiclePanel({ vehicle, loading }: VehiclePanelProps) {
           placeholder="-00,000000"
           loading={loading}
           value={position?.longitude.toFixed(6).replace('.', ',')}
+        />
+        {/* El trazo del mapa, dicho con palabras. Un recorrido que solo existe
+            como línea de colores es información que el operador con lector de
+            pantalla no tiene. */}
+        <DataRow
+          className="col-span-2"
+          label={`Recorrido de las últimas ${routeWindowHours} horas`}
+          placeholder="000 posiciones registradas"
+          loading={loading}
+          value={
+            routePoints === undefined
+              ? undefined
+              : routePoints < 2
+                ? 'Sin recorrido en la ventana: una sola posición registrada'
+                : `${routePoints} posiciones registradas`
+          }
         />
         <DataRow
           className="col-span-2"

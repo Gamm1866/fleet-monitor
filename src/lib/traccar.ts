@@ -87,6 +87,38 @@ export function deriveStatus(silenceMinutes: number, speedKmh: number): VehicleS
   return speedKmh > MOVING_ABOVE_KMH ? 'moving' : 'stopped'
 }
 
+/**
+ * Ventana del recorrido dibujado en el mapa.
+ *
+ * Seis horas cubre un turno de reparto sin convertir el mapa en una madeja.
+ * Un histórico completo no es contexto, es ruido: lo que el operador necesita
+ * saber es de dónde viene el vehículo ahora, no dónde estuvo el martes.
+ */
+export const ROUTE_WINDOW_HOURS = 6
+
+/** Recorrido reciente de un dispositivo, en orden cronológico. */
+export async function fetchRoute(deviceId: number): Promise<TraccarPosition[]> {
+  const to = new Date()
+  const from = new Date(to.getTime() - ROUTE_WINDOW_HOURS * 3_600_000)
+
+  const params = new URLSearchParams({
+    deviceId: String(deviceId),
+    from: from.toISOString(),
+    to: to.toISOString(),
+  })
+
+  const { data } = await get<TraccarPosition[]>('positions', params)
+
+  // Se ordena por `fixTime` —cuándo ocurrió— y no por `serverTime` —cuándo
+  // llegó al servidor—. Son dos relojes distintos para dos preguntas
+  // distintas: la antigüedad del contacto se mide con el del servidor (ver
+  // `deriveStatus`), pero el trazo de un recorrido es la cronología del
+  // vehículo. Un equipo que estuvo sin señal y descarga todo junto al recuperar
+  // cobertura llega desordenado, y ordenar por hora de llegada dibuja un
+  // zigzag que el vehículo nunca hizo.
+  return data.toSorted((a, b) => Date.parse(a.fixTime) - Date.parse(b.fixTime))
+}
+
 export async function fetchFleet(): Promise<FleetSnapshot> {
   const { data: devices, serverTime } = await get<TraccarDevice[]>('devices')
 

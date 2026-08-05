@@ -10,6 +10,8 @@ interface VehicleMapProps {
   vehicles: Vehicle[]
   selectedId?: number
   onSelect: (id: number) => void
+  /** Recorrido reciente del vehículo seleccionado, en orden cronológico. */
+  route?: L.LatLngTuple[]
 }
 
 /** Bogotá. Encuadre inicial mientras no hay ninguna posición que mostrar. */
@@ -50,11 +52,13 @@ function markerHtml(vehicle: Vehicle, isSelected: boolean): string {
   </span>`
 }
 
-export function VehicleMap({ vehicles, selectedId, onSelect }: VehicleMapProps) {
+export function VehicleMap({ vehicles, selectedId, onSelect, route }: VehicleMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map>(null)
   const tileRef = useRef<L.TileLayer>(null)
   const markersRef = useRef(new Map<number, L.Marker>())
+  const routeRef = useRef<L.Polyline>(null)
+  const originRef = useRef<L.CircleMarker>(null)
   /** Último vehículo encuadrado. Distingue "cambió la selección" de "llegó otro sondeo". */
   const focusedRef = useRef<number>(undefined)
   const { resolved } = useTheme()
@@ -159,6 +163,50 @@ export function VehicleMap({ vehicles, selectedId, onSelect }: VehicleMapProps) 
     }
   }, [vehicles, selectedId, onSelect])
 
+  // Recorrido reciente.
+  //
+  // Va debajo de los marcadores y en un tono atenuado a propósito: el trazo es
+  // contexto —de dónde viene—, no el dato principal. Si compite en peso visual
+  // con la posición actual, el operador tarda en encontrar dónde está el
+  // vehículo, que es la única pregunta urgente.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    routeRef.current?.remove()
+    originRef.current?.remove()
+    routeRef.current = null
+    originRef.current = null
+
+    // Un solo punto no es un recorrido: dibujar una línea de longitud cero
+    // deja un artefacto sin significado.
+    if (!route || route.length < 2) return
+
+    const styles = getComputedStyle(document.documentElement)
+    const color = styles.getPropertyValue('--color-accent').trim()
+
+    routeRef.current = L.polyline(route, {
+      color,
+      weight: 3,
+      opacity: 0.55,
+      lineJoin: 'round',
+      lineCap: 'round',
+      // Fuera del orden de tabulación: la ruta ya se describe en el panel y un
+      // trazo sin contenido en el foco solo agrega paradas vacías al teclado.
+      interactive: false,
+    }).addTo(map)
+
+    // Punta de origen: sin ella el trazo no dice en qué dirección se recorrió.
+    originRef.current = L.circleMarker(route[0], {
+      radius: 4,
+      color,
+      weight: 2,
+      fillColor: color,
+      fillOpacity: 0.3,
+      interactive: false,
+    }).addTo(map)
+  }, [route])
+
   // Seguimiento del vehículo seleccionado.
   //
   // Dos reglas, y las dos son decisiones de producto:
@@ -178,12 +226,33 @@ export function VehicleMap({ vehicles, selectedId, onSelect }: VehicleMapProps) 
 
     const target = L.latLng(selected.position.latitude, selected.position.longitude)
     const isNewSelection = focusedRef.current !== selectedId
-    focusedRef.current = selectedId
 
     if (isNewSelection) {
+      // El recorrido llega en una consulta aparte y siempre después de la
+      // posición. Se encuadra provisionalmente sin marcar la selección como
+      // resuelta, para volver a encuadrar cuando el trazo exista.
+      if (route === undefined) {
+        map.setView(target, Math.max(map.getZoom(), FOCUS_ZOOM), { animate: false })
+        return
+      }
+
       // Sin animación: el zoom animado de Leaflet se interrumpe con cada
       // refetch y deja teselas de un nivel estiradas sobre otro, borrosas.
-      map.setView(target, Math.max(map.getZoom(), FOCUS_ZOOM), { animate: false })
+      if (route.length > 1) {
+        // Con recorrido, el encuadre es el recorrido entero: centrar en el
+        // punto actual deja el origen fuera de pantalla y el trazo se lee como
+        // una línea que entra desde la nada. `maxZoom` evita que un vehículo
+        // quieto durante horas acerque el mapa hasta la vereda.
+        map.fitBounds(L.latLngBounds(route), {
+          padding: [48, 48],
+          maxZoom: FOCUS_ZOOM,
+          animate: false,
+        })
+      } else {
+        map.setView(target, Math.max(map.getZoom(), FOCUS_ZOOM), { animate: false })
+      }
+
+      focusedRef.current = selectedId
       return
     }
 
@@ -191,7 +260,7 @@ export function VehicleMap({ vehicles, selectedId, onSelect }: VehicleMapProps) 
       const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
       map.panTo(target, { animate: !reducedMotion })
     }
-  }, [vehicles, selectedId])
+  }, [vehicles, selectedId, route])
 
   return (
     <div

@@ -209,3 +209,59 @@ mismo y dejaba teselas de un nivel estiradas sobre otro: el mapa se veía borros
 Una decisión de producto no está implementada hasta que está en todas las capas donde el
 usuario la lee. Aplicarla al color y olvidarla en el texto deja la contradicción a la
 vista, y el usuario resuelve el empate por su cuenta —casi siempre mal.
+
+---
+
+## 007 — Dos relojes para dos preguntas distintas
+
+**Fecha:** 2026-08-05
+**Categoría:** Modelo de datos / UX
+
+**Qué propuso la IA**
+El recorrido de las últimas seis horas, ordenado por `serverTime` —el mismo campo que ya
+se usaba para medir la antigüedad del contacto—. Reusar el criterio parecía coherente.
+
+**Qué estaba mal**
+Se vio en pantalla apenas hubo datos reales: el trazo hacía un zigzag que ningún vehículo
+podría recorrer. `serverTime` es *cuándo llegó el dato al servidor*, no *cuándo ocurrió*.
+Un equipo que pierde señal en un túnel y descarga todo junto al recuperar cobertura manda
+media hora de posiciones con el mismo horario de llegada: ordenadas así, la línea salta
+hacia atrás y hacia adelante.
+
+**Cómo se corrigió**
+El recorrido se ordena por `fixTime` —la hora del GPS, cuándo ocurrió—, y la antigüedad
+del contacto se sigue midiendo con el reloj del servidor. La entrada 001 ya había separado
+*movimiento del vehículo* de *silencio del dispositivo*; esto es la misma distinción una
+capa más abajo, en los relojes: cada pregunta tiene el suyo y usar uno solo para las dos
+rompe una de las dos.
+
+**Nota de encuadre**
+Con recorrido disponible, el mapa encuadra el trazo completo en vez de centrar en la
+posición actual: centrado en el punto, el origen queda fuera de pantalla y la ruta se lee
+como una línea que entra desde la nada.
+
+---
+
+## 008 — El alta de vehículos no va en esta app
+
+**Fecha:** 2026-08-05
+**Categoría:** Seguridad / alcance
+
+**Qué se pidió**
+Un lugar para configurar vehículos nuevos desde el monitor.
+
+**Por qué no se construyó ahí**
+El proxy guarda las credenciales de la cuenta de Traccar y está limitado a `GET` sobre dos
+recursos. Habilitar `POST` para crear dispositivos convertiría la URL pública del deploy en
+un relay de escritura contra la cuenta: cualquiera que la conozca podría dar de alta o
+modificar vehículos y, con el resto de la API de Traccar, enviar comandos a los equipos. La
+app no tiene sesiones de usuario, así que no hay a quién pedirle permiso antes de escribir.
+
+**Cómo se resolvió**
+Un enlace explícito a Traccar en el encabezado. El alta se hace donde ya existe control de
+acceso por usuario, y el monitor sigue siendo de solo lectura.
+
+**Principio que queda**
+Un monitor de solo lectura es una decisión de arquitectura, no una funcionalidad faltante.
+La alternativa no era "agregar un formulario": era agregar un formulario *y* un sistema de
+autenticación que la prueba no pide.
