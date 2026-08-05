@@ -48,3 +48,45 @@
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono);
 }
+
+/* Leaflet trae su propia hoja de estilos con una caja blanca por defecto en
+   cada marcador y controles que ignoran el tema. Se neutraliza acá, una vez,
+   en lugar de pelearla con !important en cada componente.
+   Va SIN @layer a propósito: leaflet.css entra sin capa (lo inyecta el bundle
+   al importarse), y en la cascada cualquier estilo sin capa le gana a uno
+   dentro de una capa, sin importar el orden ni la especificidad. */
+/* Doble clase, no `.leaflet-container` a secas: leaflet.css declara ese mismo
+   selector con `#ddd` y, al inyectarse desde el bundle, queda después en el
+   documento y gana el empate. Sin esto el mapa muestra un fondo gris claro en
+   tema oscuro cada vez que una tesela todavía no llegó. */
+.leaflet-container.fleet-map {
+  background-color: var(--color-surface-sunken);
+  font-family: var(--font-sans);
+}
+
+.leaflet-container .fleet-marker {
+  background: transparent;
+  border: 0;
+}
+
+.leaflet-container .leaflet-control-attribution {
+  background-color: color-mix(in oklch, var(--color-surface) 80%, transparent);
+  color: var(--color-text-tertiary);
+  font-size: 10px;
+}
+
+.leaflet-container .leaflet-control-attribution a {
+  color: var(--color-text-secondary);
+}
+
+.leaflet-container .leaflet-bar a.leaflet-control-zoom-in,
+.leaflet-container .leaflet-bar a.leaflet-control-zoom-out {
+  background-color: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-default);
+}
+
+.leaflet-container .leaflet-bar a.leaflet-control-zoom-in:hover,
+.leaflet-container .leaflet-bar a.leaflet-control-zoom-out:hover {
+  background-color: var(--color-bg-active);
+}

@@ -133,3 +133,79 @@ recién al abrir la página y consultar el CSS ya generado:
 Un build verde solo prueba que el código compila. Las clases de Tailwind que nunca se
 generaron y los tokens que no existen en runtime fallan en silencio: hay que mirar el CSS
 emitido y la pantalla.
+
+---
+
+## 005 — El código correcto contra el entorno real: dos empates perdidos
+
+**Fecha:** 2026-08-05
+**Categoría:** Integración técnica
+
+**Qué propuso la IA**
+Dos piezas escritas "bien" según la documentación, que fallaron al tocar el entorno real.
+
+1. El proxy de Traccar con la firma web estándar: `handler(request: Request)`, leyendo
+   `new URL(request.url)`.
+2. Los estilos que neutralizan el CSS de Leaflet, ordenados dentro de
+   `@layer components` como corresponde a un override de librería.
+
+**Qué estaba mal**
+Ninguna de las dos cosas se puede detectar con `tsc` ni con el build. Las dos compilan.
+
+1. La función recibe el `req` de Node, no un `Request` web. El `.url` de Node llega
+   **relativo** (`/api/traccar/devices?resource=devices`), y `new URL()` sin base lanza
+   `ERR_INVALID_URL`. El endpoint devolvía `FUNCTION_INVOCATION_FAILED` sin más pista:
+   la causa estaba en los logs de runtime de Vercel, no en la respuesta. De paso apareció
+   que Vercel inyecta el segmento dinámico como query param, que no hay que reenviar.
+2. `leaflet.css` lo inyecta el bundle en runtime, **sin capa**. En la cascada, cualquier
+   estilo sin capa le gana a uno dentro de una capa, sin importar el orden ni la
+   especificidad. El `background: #ddd` de Leaflet ganaba y el mapa mostraba un rectángulo
+   gris claro sobre el tema oscuro cada vez que faltaba una tesela. La misma clase de
+   Tailwind (`bg-surface-sunken`) tampoco podía ganar, por vivir en una capa.
+
+**Cómo se corrigió**
+El proxy pasó a la firma `(req, res)` de `node:http`. Los estilos de Leaflet salieron de
+`@layer` y subieron un escalón de especificidad (`.leaflet-container.fleet-map`), con el
+motivo escrito al lado para que nadie los "limpie" después.
+
+**Principio que queda**
+El que gana una regla de CSS o define una firma no es la documentación: es el entorno
+donde el código se ejecuta. Los dos bugs se encontraron leyendo los logs de producción y
+midiendo el DOM con `getComputedStyle`, no releyendo el código.
+
+---
+
+## 006 — La interfaz afirmaba dos cosas incompatibles a la vez
+
+**Fecha:** 2026-08-05
+**Categoría:** UX / honestidad del dato
+
+**Qué propuso la IA**
+El panel mostraba, uno al lado del otro: la etiqueta **SIN CONTACTO** en rojo y
+**27,8 km/h** en números grandes. Además el mapa reencuadraba el vehículo seleccionado en
+cada sondeo, cada ocho segundos.
+
+**Qué estaba mal**
+La lógica de estado ya trataba el silencio del dispositivo como dominante —si el
+rastreador dejó de hablar, la velocidad guardada es un recuerdo— pero esa decisión se
+había aplicado solo al color del punto. El panel seguía presentando el dato viejo con el
+mismo formato que uno vivo. Entre una etiqueta y una cifra grande, el operador le cree a
+la cifra. Es exactamente el error del que hablaba la entrada 001, de vuelta en otra capa.
+
+El reencuadre tenía el mismo defecto de origen: trataba cada respuesta del servidor como
+una orden de mover la vista. Un operador que está mirando otra zona del mapa pierde su
+posición cada ocho segundos. Y sobre Leaflet, además, el zoom animado se interrumpía a sí
+mismo y dejaba teselas de un nivel estiradas sobre otro: el mapa se veía borroso.
+
+**Cómo se corrigió**
+- Con el dispositivo en silencio, el panel lo dice antes de los datos ("los datos de abajo
+  son de la última transmisión, hace 1 día") y las etiquetas cambian a *Última velocidad*
+  y *Último rumbo*. El dato no se oculta —sigue siendo útil— pero deja de afirmarse como
+  presente.
+- El mapa encuadra solo al **cambiar** de vehículo, sin animación. Mientras uno sigue
+  seleccionado, se desplaza únicamente si se salió del encuadre.
+
+**Principio que queda**
+Una decisión de producto no está implementada hasta que está en todas las capas donde el
+usuario la lee. Aplicarla al color y olvidarla en el texto deja la contradicción a la
+vista, y el usuario resuelve el empate por su cuenta —casi siempre mal.
