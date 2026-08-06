@@ -13,6 +13,10 @@ interface VehicleMapProps {
   onSelect: (id: number) => void
   /** Recorrido reciente del vehículo seleccionado, en orden cronológico. */
   route?: L.LatLngTuple[]
+  /** Con seguimiento activo el mapa recentra en cada posición nueva. */
+  isFollowing: boolean
+  /** El mapa avisa cuando el operador toma el control moviéndolo con la mano. */
+  onFollowingChange: (isFollowing: boolean) => void
 }
 
 /** Bogotá. Encuadre inicial mientras no hay ninguna posición que mostrar. */
@@ -29,6 +33,13 @@ const MARKER_TONE: Record<VehicleStatus, string> = {
   lost: 'bg-status-critical',
 }
 
+const MARKER_INK: Record<VehicleStatus, string> = {
+  moving: 'text-status-online',
+  stopped: 'text-status-offline',
+  stale: 'text-status-stale',
+  lost: 'text-status-critical',
+}
+
 const TILES = {
   light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
   dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
@@ -41,32 +52,65 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
+/**
+ * Marcador del vehículo: flecha si va a algún lado, punto si no.
+ *
+ * La forma comunica antes que el color, y aquí carga la información que el
+ * color no puede: hacia dónde va. Pero el rumbo solo se dibuja en movimiento —
+ * por debajo de 2 km/h el `course` que reporta el GPS es ruido, y una flecha
+ * apuntando a un rumbo inventado es peor que ninguna flecha: el operador la
+ * lee como un hecho.
+ *
+ * Un vehículo detenido, sin reportar o sin contacto es un punto: no afirma una
+ * dirección que no se sabe.
+ */
 function markerHtml(vehicle: Vehicle, isSelected: boolean): string {
-  const tone = MARKER_TONE[vehicle.status]
-  // El halo solo late en el vehículo seleccionado y en movimiento. Animar
-  // todos los puntos a la vez convierte el mapa en ruido y deja de señalar
-  // nada, que es justo lo contrario de lo que debe hacer una alerta.
-  const halo =
-    isSelected && vehicle.status === 'moving'
-      ? `<span class="absolute inline-flex size-full animate-status-pulse rounded-full ${tone} opacity-60"></span>`
-      : ''
+  const dimmed = isSelected ? '' : 'opacity-45'
 
-  return `<span class="relative flex size-3.5 ${isSelected ? '' : 'opacity-45'}">
+  if (vehicle.status !== 'moving' || !vehicle.position) {
+    const tone = MARKER_TONE[vehicle.status]
+    return `<span class="relative flex size-3.5 ${dimmed}">
+      <span class="relative inline-flex size-3.5 rounded-full ${tone} ring-2 ring-surface"></span>
+    </span>`
+  }
+
+  const ink = MARKER_INK[vehicle.status]
+  // El halo solo late en el vehículo seleccionado. Animar todos a la vez
+  // convierte el mapa en ruido y deja de señalar nada, que es justo lo
+  // contrario de lo que debe hacer una alerta.
+  const halo = isSelected
+    ? `<span class="absolute inset-1.5 animate-status-pulse rounded-full ${MARKER_TONE[vehicle.status]} opacity-50"></span>`
+    : ''
+
+  // El `stroke` del color de la superficie hace que la flecha se lea sobre
+  // cualquier tesela, clara u oscura, sin depender del basemap.
+  return `<span class="relative flex size-6 items-center justify-center ${dimmed}">
     ${halo}
-    <span class="relative inline-flex size-3.5 rounded-full ${tone} ring-2 ring-surface"></span>
+    <svg viewBox="0 0 24 24" class="relative size-6 ${ink}" style="transform: rotate(${Math.round(vehicle.position.course)}deg)" aria-hidden="true">
+      <path d="M12 3.2 18.4 20 12 16.3 5.6 20Z" fill="currentColor" stroke="var(--color-surface)" stroke-width="1.4" stroke-linejoin="round"/>
+    </svg>
   </span>`
 }
 
 function buildIcon(vehicle: Vehicle, isSelected: boolean): L.DivIcon {
+  const size = vehicle.status === 'moving' && vehicle.position ? 24 : 14
+
   return L.divIcon({
     className: 'fleet-marker',
     html: markerHtml(vehicle, isSelected),
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   })
 }
 
-export function VehicleMap({ vehicles, selectedId, onSelect, route }: VehicleMapProps) {
+export function VehicleMap({
+  vehicles,
+  selectedId,
+  onSelect,
+  route,
+  isFollowing,
+  onFollowingChange,
+}: VehicleMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map>(null)
   const tileRef = useRef<L.TileLayer>(null)
@@ -77,6 +121,13 @@ export function VehicleMap({ vehicles, selectedId, onSelect, route }: VehicleMap
   const animationsRef = useRef(new Map<number, () => void>())
   /** Última firma visual dibujada por cada marcador. */
   const iconStatesRef = useRef(new Map<number, string>())
+  // El mapa se crea una sola vez, así que sus handlers no pueden capturar la
+  // prop de este render: leen siempre la última versión desde el ref.
+  const onFollowingChangeRef = useRef(onFollowingChange)
+
+  useEffect(() => {
+    onFollowingChangeRef.current = onFollowingChange
+  }, [onFollowingChange])
   /** Último vehículo encuadrado. Distingue "cambió la selección" de "llegó otro sondeo". */
   const focusedRef = useRef<number>(undefined)
   const { resolved } = useTheme()
@@ -94,6 +145,13 @@ export function VehicleMap({ vehicles, selectedId, onSelect, route }: VehicleMap
     })
 
     map.on('click', () => map.scrollWheelZoom.enable())
+
+    // Arrastrar el mapa apaga el seguimiento. Es la regla que evita la pelea
+    // más molesta de un monitor: el operador mueve la vista para revisar otra
+    // zona y el sistema se la devuelve al vehículo un segundo después. Quien
+    // toma el mapa con la mano manda.
+    map.on('dragstart', () => onFollowingChangeRef.current(false))
+
     L.control.zoom({ position: 'bottomright' }).addTo(map)
     mapRef.current = map
 
@@ -146,7 +204,10 @@ export function VehicleMap({ vehicles, selectedId, onSelect, route }: VehicleMap
       // Firma de lo que el icono dibuja. Reemplazar el DOM del marcador en
       // cada sondeo cortaría la animación de pulso y el deslizamiento a la
       // mitad, así que solo se reconstruye cuando cambia algo que se ve.
-      const iconState = `${vehicle.status}:${isSelected}`
+      // El rumbo se redondea a 5°: por debajo de eso el giro no se percibe y
+      // solo provocaría reconstruir el marcador en cada sondeo.
+      const heading = Math.round((vehicle.position.course ?? 0) / 5) * 5
+      const iconState = `${vehicle.status}:${isSelected}:${heading}`
 
       const existing = markers.get(vehicle.id)
 
@@ -249,13 +310,10 @@ export function VehicleMap({ vehicles, selectedId, onSelect, route }: VehicleMap
 
   // Seguimiento del vehículo seleccionado.
   //
-  // Dos reglas, y las dos son decisiones de producto:
-  //
-  // 1. Solo se encuadra al CAMBIAR de vehículo. Recentrar en cada sondeo le
-  //    arranca el mapa de las manos al operador que estaba mirando otra zona,
-  //    cada ocho segundos.
-  // 2. Mientras el vehículo siga seleccionado solo se desplaza si se salió del
-  //    encuadre. Perseguirlo píxel a píxel convierte un mapa en un temblor.
+  // Al CAMBIAR de vehículo siempre se encuadra: es una acción del operador y
+  // espera que el mapa lo lleve. Después manda el interruptor de seguimiento,
+  // que arranca encendido —el mapa recentra en cada posición nueva— y se apaga
+  // solo en cuanto el operador arrastra el mapa con la mano.
   //
   // `prefers-reduced-motion` no se negocia: el desplazamiento animado de un
   // mapa es de los movimientos más agresivos que puede hacer una interfaz.
@@ -296,11 +354,12 @@ export function VehicleMap({ vehicles, selectedId, onSelect, route }: VehicleMap
       return
     }
 
-    if (!map.getBounds().contains(target)) {
-      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      map.panTo(target, { animate: !reducedMotion })
-    }
-  }, [vehicles, selectedId, route])
+    if (!isFollowing) return
+
+    // Desplazamiento suave, no salto: el mapa acompaña al marcador que ya se
+    // está deslizando en vez de teletransportarse debajo de él.
+    map.panTo(target, { animate: !prefersReducedMotion() })
+  }, [vehicles, selectedId, route, isFollowing])
 
   return (
     <div

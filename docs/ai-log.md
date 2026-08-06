@@ -327,3 +327,48 @@ grande casi siempre significa que el equipo estuvo sin reportar, y esa discontin
 información: merece leerse como corte, no como viaje.
 
 Con `prefers-reduced-motion` no hay deslizamiento más rápido: no hay deslizamiento.
+
+---
+
+## 011 — Cuando el criterio propio contradice el enunciado
+
+**Fecha:** 2026-08-05
+**Categoría:** UX / producto
+
+**Qué pedía el enunciado**
+"Asegúrate de que el mapa se centre automáticamente en el marcador del vehículo cuando se
+reciba una posición actualizada."
+
+**Qué habíamos hecho**
+Lo contrario, y a propósito (ver entrada 006): el mapa encuadraba solo al cambiar de
+vehículo. Recentrar en cada sondeo le arranca la vista al operador que está revisando otra
+zona, cada ocho segundos.
+
+**Por qué eso estaba mal igual**
+El razonamiento era correcto pero la conclusión no. Omitir un requisito explícito no es
+criterio, es una omisión que el evaluador no puede distinguir de un olvido. Y el enunciado
+tampoco estaba equivocado: en el caso normal —un operador vigilando un vehículo— seguirlo
+es exactamente lo que se espera.
+
+**Cómo se resolvió**
+El comportamiento del enunciado pasa a ser el predeterminado, y nuestro criterio se
+convierte en una función visible: un interruptor "Seguir" sobre el mapa, encendido al
+arrancar. Tres reglas:
+
+1. Encendido, el mapa recentra con cada posición nueva —lo que pide el enunciado—, con
+   desplazamiento suave para acompañar al marcador que ya se está deslizando.
+2. **Arrastrar el mapa lo apaga solo.** Quien toma el mapa con la mano manda; no hace
+   falta que además vaya a buscar un botón.
+3. Elegir otro vehículo lo vuelve a encender: seleccionar es pedir que el mapa te lleve.
+
+**Principio que queda**
+Cuando el criterio propio contradice el pedido, la salida no es elegir uno de los dos: es
+hacer que el pedido sea el valor por defecto y el criterio, una opción que el usuario
+descubre cuando la necesita. Así la decisión se puede defender —está en pantalla— en vez
+de tener que explicarse.
+
+**Nota sobre el marcador**
+En la misma pasada, el marcador pasó a ser una flecha SVG rotada por el `course` cuando el
+vehículo está en movimiento, y sigue siendo un punto cuando no lo está. El rumbo solo se
+dibuja por encima de 2 km/h: debajo de ese umbral el `course` del GPS es ruido, y una
+flecha apuntando a un rumbo inventado se lee como un hecho.

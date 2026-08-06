@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { FollowToggle } from '@/components/map/FollowToggle'
 import { VehicleMap } from '@/components/map/VehicleMap'
 import { VehicleList } from '@/components/panel/VehicleList'
 import { VehiclePanel } from '@/components/panel/VehiclePanel'
@@ -24,6 +25,9 @@ const TRACCAR_ADMIN_URL = 'https://demo.traccar.org'
 export default function Monitor() {
   const { data, isPending, isError, error, isFetching, dataUpdatedAt, refetch } = useFleet()
   const [pickedId, setPickedId] = useState<number>()
+  // Arranca encendido: el enunciado pide que el mapa siga al vehículo, y esa
+  // es la expectativa por defecto de un monitor. Apagarlo es la excepción.
+  const [isFollowing, setIsFollowing] = useState(true)
 
   const vehicles = data?.vehicles ?? []
   // `data` sobrevive al error gracias a `keepPreviousData`: haber fallado ahora
@@ -35,7 +39,12 @@ export default function Monitor() {
   const selected =
     vehicles.find((vehicle) => vehicle.id === pickedId) ?? vehicles.at(0)
 
-  const handleSelect = useCallback((id: number) => setPickedId(id), [])
+  // Elegir un vehículo es pedir que el mapa lo lleve: el seguimiento se
+  // reactiva aunque el operador lo hubiera apagado mirando otra zona.
+  const handleSelect = useCallback((id: number) => {
+    setPickedId(id)
+    setIsFollowing(true)
+  }, [])
 
   const { data: routePositions } = useRoute(selected?.id)
   const route = routePositions?.map(
@@ -84,12 +93,26 @@ export default function Monitor() {
           está", que es la que lo retiene. Debajo de lg el mapa pasa arriba y
           el panel abajo, sin achicar ninguno a un tamaño inútil. */}
       <main className="grid min-h-0 flex-1 grid-rows-[minmax(16rem,45vh)_1fr] lg:grid-cols-[3fr_2fr] lg:grid-rows-1">
-        <VehicleMap
-          vehicles={vehicles}
-          selectedId={selected?.id}
-          onSelect={handleSelect}
-          route={route}
-        />
+        <div className="relative min-h-0">
+          <VehicleMap
+            vehicles={vehicles}
+            selectedId={selected?.id}
+            onSelect={handleSelect}
+            route={route}
+            isFollowing={isFollowing}
+            onFollowingChange={setIsFollowing}
+          />
+          {/* Sobre el mapa y no en la barra superior: el control pertenece a lo
+              que modifica. Los controles de Leaflet viven en z-400, así que el
+              toggle tiene que ir por encima para no quedar tapado. */}
+          <div className="pointer-events-none absolute left-3 top-3 z-[500]">
+            <FollowToggle
+              isFollowing={isFollowing}
+              onChange={setIsFollowing}
+              vehicleName={selected?.name}
+            />
+          </div>
+        </div>
 
         <div className="flex min-h-0 flex-col overflow-y-auto border-t border-border-subtle lg:border-l lg:border-t-0">
           {vehicles.length > 1 ? (
