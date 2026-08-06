@@ -5,6 +5,7 @@ import {
   type VehicleStatus,
 } from './status'
 import { knotsToKmh } from './format'
+import { fetchRoadRoute } from './osrm'
 
 export interface TraccarDevice {
   id: number
@@ -145,6 +146,14 @@ export const ROUTE_WINDOW_HOURS = 6
 
 /** Recorrido reciente de un dispositivo, en orden cronológico. */
 export async function fetchRoute(deviceId: number): Promise<TraccarPosition[]> {
+  // Los vehículos demo no tienen recorrido real en Traccar: se calculan del
+  // mismo modo que su posición actual, sin llamar al proxy.
+  const demoProfile = DEMO_PROFILES.find((profile) => profile.id === deviceId)
+  if (demoProfile) {
+    await ensureDemoRoadRoute()
+    return demoRoute(demoProfile, Date.now())
+  }
+
   const to = new Date()
   const from = new Date(to.getTime() - ROUTE_WINDOW_HOURS * 3_600_000)
 
@@ -166,11 +175,274 @@ export async function fetchRoute(deviceId: number): Promise<TraccarPosition[]> {
   return data.toSorted((a, b) => Date.parse(a.fixTime) - Date.parse(b.fixTime))
 }
 
+/**
+ * Vehículos de demostración.
+ *
+ * La cuenta demo de Traccar tiene un solo dispositivo real (OsmAnd), así que
+ * no puede mostrar los cuatro estados del sistema a la vez. Estos vehículos
+ * sintéticos rellenan los estados que la flota real no cubre en el momento de
+ * la lectura — nunca duplican uno que ya esté presente.
+ *
+ * Se recalculan a partir del reloj en cada sondeo, no de un proceso externo
+ * enviando posiciones falsas: así no dependen de que algo siga corriendo, y
+ * "en movimiento" se ve realmente moverse porque la posición es función del
+ * tiempo.
+ */
+const DEMO_ORIGIN = { latitude: 4.711, longitude: -74.0721 } // Bogotá
+const KNOTS_PER_KMH = 1 / 1.852
+
+/**
+ * Recorrido real por calles para el demo "en movimiento".
+ *
+ * Un círculo alrededor de un punto es geometría, no una calle: corta por
+ * el medio de las manzanas y atraviesa edificios. `fetchRoadRoute` le pide a
+ * OSRM la geometría real entre dos puntos de Bogotá una sola vez, y el
+ * camión recorre esa polilínea de ida y vuelta —el patrullaje se calcula con
+ * el reloj, no reenviando la petición en cada sondeo.
+ *
+ * Si OSRM no responde (sin red, servidor demo caído), se cae a un círculo
+ * sintético: la demo sigue funcionando, solo pierde el ajuste a la calle.
+ */
+const DEMO_ROUTE_FROM: [number, number] = [4.711, -74.0721]
+const DEMO_ROUTE_TO: [number, number] = [4.698, -74.0405] // ~4 km, cruzando Usaquén
+
+interface DemoRoadRoute {
+  coordinates: [number, number][]
+  /** Distancia acumulada en metros hasta cada punto de `coordinates`. */
+  cumulative: number[]
+  totalMeters: number
+}
+
+let demoRoadRoute: DemoRoadRoute | null = null
+let demoRoadRoutePromise: Promise<void> | null = null
+
+function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const EARTH_RADIUS_M = 6_371_000
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLon = toRad(lon2 - lon1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
+  return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(a))
+}
+
+function bearingDegrees(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const dLon = toRad(lon2 - lon1)
+  const y = Math.sin(dLon) * Math.cos(toRad(lat2))
+  const x =
+    Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+    Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon)
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
+}
+
+function ensureDemoRoadRoute(): Promise<void> {
+  demoRoadRoutePromise ??= fetchRoadRoute(DEMO_ROUTE_FROM, DEMO_ROUTE_TO)
+    .then(({ coordinates }) => {
+      const cumulative = [0]
+      for (let i = 1; i < coordinates.length; i++) {
+        const [lat1, lon1] = coordinates[i - 1]
+        const [lat2, lon2] = coordinates[i]
+        cumulative.push(cumulative[i - 1] + haversineMeters(lat1, lon1, lat2, lon2))
+      }
+      demoRoadRoute = { coordinates, cumulative, totalMeters: cumulative.at(-1) ?? 0 }
+    })
+    .catch(() => {
+      demoRoadRoute = null
+    })
+
+  return demoRoadRoutePromise
+}
+
+/** Punto a una distancia dada sobre la polilínea real, con el rumbo del tramo. */
+function pointOnRoadRoute(
+  route: DemoRoadRoute,
+  distanceMeters: number,
+): { latitude: number; longitude: number; course: number } {
+  const distance = Math.min(Math.max(distanceMeters, 0), route.totalMeters)
+  let i = 1
+  while (i < route.cumulative.length - 1 && route.cumulative[i] < distance) i++
+
+  const [lat1, lon1] = route.coordinates[i - 1]
+  const [lat2, lon2] = route.coordinates[i]
+  const segmentStart = route.cumulative[i - 1]
+  const segmentLength = route.cumulative[i] - segmentStart || 1
+  const ratio = (distance - segmentStart) / segmentLength
+
+  return {
+    latitude: lat1 + (lat2 - lat1) * ratio,
+    longitude: lon1 + (lon2 - lon1) * ratio,
+    course: bearingDegrees(lat1, lon1, lat2, lon2),
+  }
+}
+
+/**
+ * Patrullaje de ida y vuelta sobre la ruta real: una vuelta completa
+ * (ida + vuelta) dura lo mismo que la ventana de recorrido, así las 24
+ * muestras del trazo cubren un solo tramo limpio y no se pisan entre sí.
+ */
+function demoRoadPosition(atMs: number): { latitude: number; longitude: number; course: number } {
+  const route = demoRoadRoute
+  if (!route) return demoOrbit(atMs)
+
+  const loopMs = ROUTE_WINDOW_HOURS * 3_600_000
+  const half = loopMs / 2
+  const cyclePos = atMs % loopMs
+  const isOutbound = cyclePos <= half
+  const distanceMeters = (isOutbound ? cyclePos / half : (loopMs - cyclePos) / half) * route.totalMeters
+
+  const point = pointOnRoadRoute(route, distanceMeters)
+  return isOutbound ? point : { ...point, course: (point.course + 180) % 360 }
+}
+
+/** Respaldo si OSRM no responde: un círculo alrededor del origen. Una vuelta
+ * cada 8 horas, para que la ventana de recorrido (6h) no la complete entera y
+ * el trazo no se dibuje como una estrella por aliasing entre muestras. */
+const DEMO_ORBIT_LAP_MS = 8 * 3_600_000
+const DEMO_ORBIT_RADIUS_DEG = 0.012
+
+function demoOrbit(atMs: number): { latitude: number; longitude: number; course: number } {
+  const angle = ((atMs % DEMO_ORBIT_LAP_MS) / DEMO_ORBIT_LAP_MS) * 2 * Math.PI
+  return {
+    latitude: DEMO_ORIGIN.latitude + Math.sin(angle) * DEMO_ORBIT_RADIUS_DEG,
+    longitude: DEMO_ORIGIN.longitude + Math.cos(angle) * DEMO_ORBIT_RADIUS_DEG,
+    course: (((angle * 180) / Math.PI) + 90) % 360,
+  }
+}
+
+interface DemoProfile {
+  id: number
+  name: string
+  uniqueId: string
+  status: VehicleStatus
+  /** Desplazamiento fijo respecto del origen, para los que no se mueven. */
+  offset: { lat: number; lon: number }
+  speedKmh: number
+  silenceMinutes: number
+  batteryLevel: number
+}
+
+const DEMO_PROFILES: DemoProfile[] = [
+  {
+    id: -1,
+    name: 'Demo — En movimiento',
+    uniqueId: 'demo-moving',
+    status: 'moving',
+    offset: { lat: 0, lon: 0 },
+    speedKmh: 34,
+    silenceMinutes: 0,
+    batteryLevel: 91,
+  },
+  {
+    id: -2,
+    name: 'Demo — Detenido',
+    uniqueId: 'demo-stopped',
+    status: 'stopped',
+    offset: { lat: 0.014, lon: -0.01 },
+    speedKmh: 0,
+    silenceMinutes: 1,
+    batteryLevel: 78,
+  },
+  {
+    id: -3,
+    name: 'Demo — Sin reportar',
+    uniqueId: 'demo-stale',
+    status: 'stale',
+    offset: { lat: -0.012, lon: 0.016 },
+    speedKmh: 0,
+    silenceMinutes: STALE_AFTER_MINUTES + 4,
+    batteryLevel: 54,
+  },
+  {
+    id: -4,
+    name: 'Demo — Sin contacto',
+    uniqueId: 'demo-lost',
+    status: 'lost',
+    offset: { lat: 0.02, lon: 0.022 },
+    speedKmh: 0,
+    silenceMinutes: LOST_AFTER_MINUTES + 15,
+    batteryLevel: 12,
+  },
+]
+
+function buildDemoVehicle(profile: DemoProfile, serverTime: number): Vehicle {
+  const point =
+    profile.status === 'moving'
+      ? demoRoadPosition(serverTime)
+      : {
+          latitude: DEMO_ORIGIN.latitude + profile.offset.lat,
+          longitude: DEMO_ORIGIN.longitude + profile.offset.lon,
+          course: 0,
+        }
+  const fixTime = new Date(serverTime - profile.silenceMinutes * 60_000).toISOString()
+
+  const position: TraccarPosition = {
+    id: profile.id,
+    deviceId: profile.id,
+    latitude: point.latitude,
+    longitude: point.longitude,
+    speed: profile.speedKmh * KNOTS_PER_KMH,
+    course: point.course,
+    serverTime: new Date(serverTime).toISOString(),
+    fixTime,
+    attributes: { batteryLevel: profile.batteryLevel },
+  }
+
+  return {
+    id: profile.id,
+    name: profile.name,
+    uniqueId: profile.uniqueId,
+    status: profile.status,
+    position,
+    speedKmh: profile.speedKmh,
+    silenceMinutes: profile.silenceMinutes,
+    batteryLevel: profile.batteryLevel,
+  }
+}
+
+/** Recorrido reciente del demo "en movimiento"; los otros no se desplazan. */
+function demoRoute(profile: DemoProfile, serverTime: number): TraccarPosition[] {
+  if (profile.status !== 'moving') {
+    return [buildDemoVehicle(profile, serverTime).position as TraccarPosition]
+  }
+
+  const samples = 24
+  const stepMs = (ROUTE_WINDOW_HOURS * 3_600_000) / samples
+
+  return Array.from({ length: samples }, (_, i) => {
+    const atMs = serverTime - (samples - 1 - i) * stepMs
+    const point = demoRoadPosition(atMs)
+    return {
+      id: profile.id * 1000 - i,
+      deviceId: profile.id,
+      latitude: point.latitude,
+      longitude: point.longitude,
+      speed: profile.speedKmh * KNOTS_PER_KMH,
+      course: point.course,
+      serverTime: new Date(atMs).toISOString(),
+      fixTime: new Date(atMs).toISOString(),
+      attributes: {},
+    }
+  })
+}
+
+function withDemoVehicles(vehicles: Vehicle[], serverTime: number): Vehicle[] {
+  const covered = new Set(vehicles.map((vehicle) => vehicle.status))
+  const missing = DEMO_PROFILES.filter((profile) => !covered.has(profile.status))
+
+  return [...vehicles, ...missing.map((profile) => buildDemoVehicle(profile, serverTime))]
+}
+
 export async function fetchFleet(): Promise<FleetSnapshot> {
+  // Memoizado: solo pega contra OSRM la primera vez, después reusa la
+  // geometría cacheada en cada sondeo de 8 segundos.
+  await ensureDemoRoadRoute()
+
   const { data: devices, serverTime } = await get<TraccarDevice[]>('devices')
 
   if (devices.length === 0) {
-    return { vehicles: [], serverTime }
+    return { vehicles: withDemoVehicles([], serverTime), serverTime }
   }
 
   // `/positions` sin parámetros devuelve un array vacío en la instancia demo.
@@ -205,5 +477,5 @@ export async function fetchFleet(): Promise<FleetSnapshot> {
     }
   })
 
-  return { vehicles, serverTime }
+  return { vehicles: withDemoVehicles(vehicles, serverTime), serverTime }
 }

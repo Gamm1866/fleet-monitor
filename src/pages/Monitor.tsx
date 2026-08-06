@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { FollowToggle } from '@/components/map/FollowToggle'
 import { VehicleMap } from '@/components/map/VehicleMap'
-import { VehicleList } from '@/components/panel/VehicleList'
+import { FleetPanel } from '@/components/panel/FleetPanel'
 import { VehiclePanel } from '@/components/panel/VehiclePanel'
 import { ErrorBanner, ErrorState } from '@/components/ui/ErrorState'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
@@ -112,21 +112,23 @@ export default function Monitor() {
               vehicleName={selected?.name}
             />
           </div>
+
+          {/* Ventana flotante, no columna fija: ver toda la flota y ver el
+              detalle de una son dos preguntas distintas, y la primera no
+              necesita quedarse abierta una vez que el operador ya eligió a
+              quién mirar. */}
+          {vehicles.length > 0 ? (
+            <div className="pointer-events-none absolute right-3 top-3 z-[500]">
+              <FleetPanel
+                vehicles={vehicles}
+                selectedId={selected?.id}
+                onSelect={handleSelect}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="flex min-h-0 flex-col overflow-y-auto border-t border-border-subtle lg:border-l lg:border-t-0">
-          {/* La lista se muestra aunque haya un solo vehículo. Ocultarla
-              esconde el mecanismo de selección justo cuando la flota es chica,
-              que es cuando el operador todavía está aprendiendo la
-              herramienta. */}
-          {vehicles.length > 0 ? (
-            <VehicleList
-              vehicles={vehicles}
-              selectedId={selected?.id}
-              onSelect={handleSelect}
-            />
-          ) : null}
-
           {!isPending && vehicles.length === 0 ? (
             <p className="p-6 text-data-md text-text-secondary">
               La cuenta no tiene vehículos registrados.
