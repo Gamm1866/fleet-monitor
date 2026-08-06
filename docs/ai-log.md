@@ -372,3 +372,46 @@ En la misma pasada, el marcador pasó a ser una flecha SVG rotada por el `course
 vehículo está en movimiento, y sigue siendo un punto cuando no lo está. El rumbo solo se
 dibuja por encima de 2 km/h: debajo de ese umbral el `course` del GPS es ruido, y una
 flecha apuntando a un rumbo inventado se lee como un hecho.
+
+---
+
+## 012 — Tres estados, un solo canal
+
+**Fecha:** 2026-08-05
+**Categoría:** Accesibilidad / dirección de arte
+
+**Qué propuso la IA**
+Un punto lleno para los tres estados sin movimiento —detenido, sin reportar y sin
+contacto— distinguidos solo por el color: gris, ámbar, rojo.
+
+**Qué estaba mal**
+En la tarjeta de estado el color va acompañado de texto, así que alcanza. En el mapa no:
+al lado del punto no hay ninguna palabra. Tres estados que solo se diferencian por el tono
+dejan afuera a quien no los distingue —WCAG 1.4.1, *Uso del color*— y, en la práctica,
+también a quien mira de reojo una pantalla a dos metros, que es exactamente la postura de
+un operador de sala de control.
+
+Había además una decisión pendiente desde el sistema de diseño: el ámbar de "sin reportar"
+competía visualmente con el rojo de "sin contacto". El problema no era el ámbar: era pedirle
+al color que cargara solo con una distinción de tres niveles.
+
+**Cómo se corrigió**
+La forma pasa a llevar la información y el color queda como refuerzo:
+
+```
+detenido      ●   punto lleno      el dato está completo
+sin reportar  ◎   anillo hueco     el dato empezó a faltar
+sin contacto  ⊘   anillo cortado   el dato no está
+```
+
+El marcador se va vaciando a medida que el dispositivo se calla. No hace falta leyenda: la
+progresión de lleno a hueco a cortado se entiende sola, y sobrevive a una pantalla en
+blanco y negro, a un daltónico y a un vistazo de medio segundo.
+
+En movimiento el marcador es otra cosa —una flecha rotada por el rumbo—, así que los
+cuatro estados difieren en forma antes que en color.
+
+**Principio que queda**
+Cuando un canal tiene que soportar más de dos valores, conviene preguntarse si es el canal
+correcto. La respuesta no era elegir mejores colores: era dejar de pedirle al color que
+hiciera el trabajo de la forma.

@@ -3,8 +3,9 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { animateMarkerTo } from './animate-marker'
+import { markerHtml, markerSize } from './marker'
 import { useTheme } from '@/providers/theme-provider'
-import { STATUS_META, type VehicleStatus } from '@/lib/status'
+import { STATUS_META } from '@/lib/status'
 import type { Vehicle } from '@/lib/traccar'
 
 interface VehicleMapProps {
@@ -24,22 +25,6 @@ const FALLBACK_CENTER: L.LatLngTuple = [4.711, -74.0721]
 const FALLBACK_ZOOM = 12
 const FOCUS_ZOOM = 15
 
-// Se usan clases completas y no interpoladas: Tailwind lee el código como
-// texto plano y una clase armada con template string nunca llega al CSS.
-const MARKER_TONE: Record<VehicleStatus, string> = {
-  moving: 'bg-status-online',
-  stopped: 'bg-status-offline',
-  stale: 'bg-status-stale',
-  lost: 'bg-status-critical',
-}
-
-const MARKER_INK: Record<VehicleStatus, string> = {
-  moving: 'text-status-online',
-  stopped: 'text-status-offline',
-  stale: 'text-status-stale',
-  lost: 'text-status-critical',
-}
-
 const TILES = {
   light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
   dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
@@ -52,52 +37,17 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
-/**
- * Marcador del vehículo: flecha si va a algún lado, punto si no.
- *
- * La forma comunica antes que el color, y aquí carga la información que el
- * color no puede: hacia dónde va. Pero el rumbo solo se dibuja en movimiento —
- * por debajo de 2 km/h el `course` que reporta el GPS es ruido, y una flecha
- * apuntando a un rumbo inventado es peor que ninguna flecha: el operador la
- * lee como un hecho.
- *
- * Un vehículo detenido, sin reportar o sin contacto es un punto: no afirma una
- * dirección que no se sabe.
- */
-function markerHtml(vehicle: Vehicle, isSelected: boolean): string {
-  const dimmed = isSelected ? '' : 'opacity-45'
-
-  if (vehicle.status !== 'moving' || !vehicle.position) {
-    const tone = MARKER_TONE[vehicle.status]
-    return `<span class="relative flex size-3.5 ${dimmed}">
-      <span class="relative inline-flex size-3.5 rounded-full ${tone} ring-2 ring-surface"></span>
-    </span>`
-  }
-
-  const ink = MARKER_INK[vehicle.status]
-  // El halo solo late en el vehículo seleccionado. Animar todos a la vez
-  // convierte el mapa en ruido y deja de señalar nada, que es justo lo
-  // contrario de lo que debe hacer una alerta.
-  const halo = isSelected
-    ? `<span class="absolute inset-1.5 animate-status-pulse rounded-full ${MARKER_TONE[vehicle.status]} opacity-50"></span>`
-    : ''
-
-  // El `stroke` del color de la superficie hace que la flecha se lea sobre
-  // cualquier tesela, clara u oscura, sin depender del basemap.
-  return `<span class="relative flex size-6 items-center justify-center ${dimmed}">
-    ${halo}
-    <svg viewBox="0 0 24 24" class="relative size-6 ${ink}" style="transform: rotate(${Math.round(vehicle.position.course)}deg)" aria-hidden="true">
-      <path d="M12 3.2 18.4 20 12 16.3 5.6 20Z" fill="currentColor" stroke="var(--color-surface)" stroke-width="1.4" stroke-linejoin="round"/>
-    </svg>
-  </span>`
-}
-
 function buildIcon(vehicle: Vehicle, isSelected: boolean): L.DivIcon {
-  const size = vehicle.status === 'moving' && vehicle.position ? 24 : 14
+  const options = {
+    status: vehicle.status,
+    course: vehicle.position?.course,
+    isSelected,
+  }
+  const size = markerSize(options)
 
   return L.divIcon({
     className: 'fleet-marker',
-    html: markerHtml(vehicle, isSelected),
+    html: markerHtml(options),
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   })

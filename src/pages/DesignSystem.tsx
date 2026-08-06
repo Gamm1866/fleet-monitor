@@ -5,6 +5,7 @@ import { Select } from '@/components/base/select/select'
 import { AnimatedValue } from '@/components/ui/AnimatedValue'
 import { DataRow } from '@/components/ui/DataRow'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { markerHtml } from '@/components/map/marker'
 import { StatusPill } from '@/components/ui/StatusPill'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { STATUS_META, type VehicleStatus } from '@/lib/status'
@@ -182,6 +183,33 @@ export default function DesignSystem() {
               «{STATUS_META.stale.announcement}»
             </span>
           </p>
+        </Section>
+
+        <Section
+          title="Marcadores del mapa"
+          hint="Sobre el mapa no hay texto al lado del punto, así que el color no puede ser el único canal. La figura se va vaciando a medida que el dispositivo se calla: lleno, hueco, cortado. En movimiento el marcador es una flecha rotada por el rumbo — pero solo por encima de 2 km/h, porque debajo de ese umbral el course del GPS es ruido."
+        >
+          <div className="flex flex-wrap gap-8">
+            {STATUSES.map((status) => (
+              <div key={status} className="flex flex-col items-center gap-3">
+                <span
+                  className="grid size-12 place-items-center rounded-card bg-surface-sunken"
+                  // El marcador se dibuja como cadena de HTML porque Leaflet lo
+                  // inyecta así en el mapa: mostrarlo acá con otro camino sería
+                  // documentar algo distinto de lo que se ve en producción.
+                  dangerouslySetInnerHTML={{
+                    __html: markerHtml({
+                      status,
+                      course: status === 'moving' ? 45 : undefined,
+                    }),
+                  }}
+                />
+                <span className="text-data-sm text-text-secondary">
+                  {STATUS_META[status].label}
+                </span>
+              </div>
+            ))}
+          </div>
         </Section>
 
         <Section
