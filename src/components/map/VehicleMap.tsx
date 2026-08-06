@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
+import { animateMarkerTo } from './animate-marker'
 import { useTheme } from '@/providers/theme-provider'
 import { STATUS_META, type VehicleStatus } from '@/lib/status'
 import type { Vehicle } from '@/lib/traccar'
@@ -36,6 +37,10 @@ const TILES = {
 const ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
 
+function prefersReducedMotion(): boolean {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
 function markerHtml(vehicle: Vehicle, isSelected: boolean): string {
   const tone = MARKER_TONE[vehicle.status]
   // El halo solo late en el vehículo seleccionado y en movimiento. Animar
@@ -52,6 +57,15 @@ function markerHtml(vehicle: Vehicle, isSelected: boolean): string {
   </span>`
 }
 
+function buildIcon(vehicle: Vehicle, isSelected: boolean): L.DivIcon {
+  return L.divIcon({
+    className: 'fleet-marker',
+    html: markerHtml(vehicle, isSelected),
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  })
+}
+
 export function VehicleMap({ vehicles, selectedId, onSelect, route }: VehicleMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map>(null)
@@ -59,6 +73,10 @@ export function VehicleMap({ vehicles, selectedId, onSelect, route }: VehicleMap
   const markersRef = useRef(new Map<number, L.Marker>())
   const routeRef = useRef<L.Polyline>(null)
   const originRef = useRef<L.CircleMarker>(null)
+  /** Cancelador de la animación en curso de cada marcador. */
+  const animationsRef = useRef(new Map<number, () => void>())
+  /** Última firma visual dibujada por cada marcador. */
+  const iconStatesRef = useRef(new Map<number, string>())
   /** Último vehículo encuadrado. Distingue "cambió la selección" de "llegó otro sondeo". */
   const focusedRef = useRef<number>(undefined)
   const { resolved } = useTheme()
@@ -80,6 +98,9 @@ export function VehicleMap({ vehicles, selectedId, onSelect, route }: VehicleMap
     mapRef.current = map
 
     return () => {
+      for (const cancel of animationsRef.current.values()) cancel()
+      animationsRef.current.clear()
+      iconStatesRef.current.clear()
       map.remove()
       mapRef.current = null
       tileRef.current = null
@@ -121,24 +142,40 @@ export function VehicleMap({ vehicles, selectedId, onSelect, route }: VehicleMap
       seen.add(vehicle.id)
       const { latitude, longitude } = vehicle.position
       const isSelected = vehicle.id === selectedId
-      const icon = L.divIcon({
-        className: 'fleet-marker',
-        html: markerHtml(vehicle, isSelected),
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
-      })
+      const target = L.latLng(latitude, longitude)
+      // Firma de lo que el icono dibuja. Reemplazar el DOM del marcador en
+      // cada sondeo cortaría la animación de pulso y el deslizamiento a la
+      // mitad, así que solo se reconstruye cuando cambia algo que se ve.
+      const iconState = `${vehicle.status}:${isSelected}`
 
       const existing = markers.get(vehicle.id)
 
       if (existing) {
-        existing.setLatLng([latitude, longitude])
-        existing.setIcon(icon)
+        if (iconStatesRef.current.get(vehicle.id) !== iconState) {
+          existing.setIcon(buildIcon(vehicle, isSelected))
+          iconStatesRef.current.set(vehicle.id, iconState)
+        }
+
         existing.setZIndexOffset(isSelected ? 1000 : 0)
+
+        if (!existing.getLatLng().equals(target)) {
+          // Una sola animación por marcador: si llega una posición nueva antes
+          // de que termine la anterior, se cancela y se sale desde donde está,
+          // no desde donde debería haber estado.
+          animationsRef.current.get(vehicle.id)?.()
+          animationsRef.current.set(
+            vehicle.id,
+            animateMarkerTo(existing, target, { reducedMotion: prefersReducedMotion() }),
+          )
+        }
+
         continue
       }
 
-      const marker = L.marker([latitude, longitude], {
-        icon,
+      iconStatesRef.current.set(vehicle.id, iconState)
+
+      const marker = L.marker(target, {
+        icon: buildIcon(vehicle, isSelected),
         zIndexOffset: isSelected ? 1000 : 0,
         keyboard: true,
         // El marcador es un control real, no una decoración: se alcanza con
@@ -158,6 +195,9 @@ export function VehicleMap({ vehicles, selectedId, onSelect, route }: VehicleMap
 
     for (const [id, marker] of markers) {
       if (seen.has(id)) continue
+      animationsRef.current.get(id)?.()
+      animationsRef.current.delete(id)
+      iconStatesRef.current.delete(id)
       marker.remove()
       markers.delete(id)
     }

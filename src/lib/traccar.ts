@@ -56,13 +56,60 @@ export interface FleetSnapshot {
   serverTime: number
 }
 
+/** Motivos que el proxy reporta en su propio JSON. */
+const PROXY_REASONS: Record<string, string> = {
+  missing_credentials: 'el servidor no tiene configuradas las credenciales',
+  upstream_unreachable: 'el servidor de Traccar no responde',
+  resource_not_allowed: 'el recurso pedido no está permitido',
+}
+
+const STATUS_REASONS: Record<number, string> = {
+  401: 'las credenciales fueron rechazadas',
+  403: 'la cuenta no tiene permiso sobre este recurso',
+  429: 'demasiadas peticiones seguidas',
+  500: 'el servidor falló al procesar la petición',
+  502: 'el servidor de Traccar no responde',
+  504: 'el servidor de Traccar tardó demasiado',
+}
+
+/**
+ * Convierte un fallo en una línea legible.
+ *
+ * Traccar responde a un 401 con un stack trace de Java completo. Volcarlo en
+ * pantalla no ayuda a nadie —el operador no lo entiende y el desarrollador ya
+ * lo tiene en la consola— y de paso publica la estructura interna del servidor
+ * a cualquiera que abra la app.
+ */
+async function describeFailure(response: Response): Promise<string> {
+  const body = await response.text()
+
+  try {
+    const parsed: unknown = JSON.parse(body)
+    const code =
+      typeof parsed === 'object' && parsed !== null && 'error' in parsed
+        ? String((parsed as { error: unknown }).error)
+        : undefined
+
+    if (code && PROXY_REASONS[code]) {
+      return `Error ${response.status}: ${PROXY_REASONS[code]}.`
+    }
+  } catch {
+    // Traccar no siempre responde JSON. El status alcanza.
+  }
+
+  const reason = STATUS_REASONS[response.status]
+
+  return reason
+    ? `Error ${response.status}: ${reason}.`
+    : `El servidor respondió con un error ${response.status}.`
+}
+
 async function get<T>(resource: string, params?: URLSearchParams) {
   const query = params?.toString()
   const response = await fetch(`/api/traccar/${resource}${query ? `?${query}` : ''}`)
 
   if (!response.ok) {
-    const detail = await response.text()
-    throw new Error(`Traccar respondió ${response.status}: ${detail.slice(0, 200)}`)
+    throw new Error(await describeFailure(response))
   }
 
   const header = response.headers.get('X-Server-Time')

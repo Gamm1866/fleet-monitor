@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { VehicleMap } from '@/components/map/VehicleMap'
 import { VehicleList } from '@/components/panel/VehicleList'
 import { VehiclePanel } from '@/components/panel/VehiclePanel'
+import { ErrorBanner, ErrorState } from '@/components/ui/ErrorState'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { useFleet } from '@/hooks/use-fleet'
 import { useRoute } from '@/hooks/use-route'
@@ -21,10 +22,13 @@ import { ROUTE_WINDOW_HOURS } from '@/lib/traccar'
 const TRACCAR_ADMIN_URL = 'https://demo.traccar.org'
 
 export default function Monitor() {
-  const { data, isPending, isError, error, isFetching, dataUpdatedAt } = useFleet()
+  const { data, isPending, isError, error, isFetching, dataUpdatedAt, refetch } = useFleet()
   const [pickedId, setPickedId] = useState<number>()
 
   const vehicles = data?.vehicles ?? []
+  // `data` sobrevive al error gracias a `keepPreviousData`: haber fallado ahora
+  // no es lo mismo que no tener nada que mostrar.
+  const hasData = data !== undefined
   // El seleccionado se deriva en vez de sincronizarse con un efecto: si el
   // vehículo elegido desaparece de la flota, la interfaz cae sola al primero
   // en lugar de quedarse apuntando a un id que ya no existe.
@@ -58,15 +62,22 @@ export default function Monitor() {
         </div>
       </header>
 
-      {isError ? (
-        <p
-          role="alert"
-          className="border-b border-status-critical/30 bg-status-critical/10 px-6 py-3 text-data-sm text-status-critical"
-        >
-          No se pudo leer la flota. Se muestra la última lectura conocida.{' '}
-          <span className="text-text-tertiary">{error.message}</span>
-        </p>
-      ) : null}
+      {/* Dos tratamientos para el mismo fallo, según haya o no algo que
+          mostrar. El arranque fallido se lleva la pantalla; la caída
+          intermitente, apenas una franja: tapar la última posición conocida
+          con un modal le quita al operador la única información que le queda
+          justo cuando el sistema falla. */}
+      {isError && !hasData ? (
+        <ErrorState
+          detail={error.message}
+          onRetry={() => void refetch()}
+          isRetrying={isFetching}
+        />
+      ) : (
+        <>
+          {isError ? (
+            <ErrorBanner onRetry={() => void refetch()} isRetrying={isFetching} />
+          ) : null}
 
       {/* 60/40: el mapa domina porque responde "dónde", que es la pregunta que
           trae al operador. El panel se lleva el 40% porque responde "cómo
@@ -117,8 +128,10 @@ export default function Monitor() {
               <span>Conectando…</span>
             )}
           </footer>
-        </div>
-      </main>
+            </div>
+          </main>
+        </>
+      )}
     </div>
   )
 }

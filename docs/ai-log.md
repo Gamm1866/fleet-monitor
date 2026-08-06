@@ -265,3 +265,65 @@ acceso por usuario, y el monitor sigue siendo de solo lectura.
 Un monitor de solo lectura es una decisión de arquitectura, no una funcionalidad faltante.
 La alternativa no era "agregar un formulario": era agregar un formulario *y* un sistema de
 autenticación que la prueba no pide.
+
+---
+
+## 009 — El error tenía dos formas, no una
+
+**Fecha:** 2026-08-05
+**Categoría:** UX / estados críticos
+
+**Qué propuso la IA**
+Una franja roja con el mensaje del fallo, igual para cualquier error.
+
+**Qué estaba mal**
+Dos cosas. La primera: no había botón de reintento, que el enunciado pide explícitamente.
+La segunda es más de fondo: un fallo al arrancar y un fallo intermitente no son el mismo
+evento para el operador.
+
+- Si la app nunca cargó, no hay nada en pantalla y una franja delgada es un susurro
+  cuando hace falta una explicación.
+- Si la app ya tenía datos, un modal que tapa el mapa le quita al operador la última
+  posición conocida —la única información que le queda— justo cuando el sistema falla.
+
+**Cómo se corrigió**
+Dos tratamientos con el mismo origen. Sin datos: pantalla completa, con micro-copy que
+nombra lo que se sabe y lo que no ("la posición puede haber cambiado: por ahora, el
+sistema no lo sabe") y botón de reintento. Con datos: franja no bloqueante con el mismo
+botón, porque el polling ya reintenta solo y el botón existe para quien no quiere esperar
+los ocho segundos.
+
+**El detalle que se vio en pantalla**
+Traccar responde a un 401 con un stack trace de Java completo, y la primera versión lo
+volcaba entero en la interfaz. No ayuda a nadie —el operador no lo entiende, el
+desarrollador ya lo tiene en la consola— y publica la estructura interna del servidor a
+cualquiera que abra la app. Ahora los errores se traducen a una línea: *"Error 401: las
+credenciales fueron rechazadas."*
+
+---
+
+## 010 — Interpolar sin mentir
+
+**Fecha:** 2026-08-05
+**Categoría:** UX / micro-interacción
+
+**Qué propuso la IA**
+`marker.setLatLng()` en cada sondeo. El marcador saltaba de una posición a otra.
+
+**Qué estaba mal**
+El enunciado pide que el marcador se deslice, y con razón: un salto obliga al ojo a
+buscar de nuevo dónde quedó el vehículo, ocho veces por minuto.
+
+**Cómo se corrigió**
+Deslizamiento por `requestAnimationFrame` con desaceleración cúbica, 1,2 s —más corto que
+el intervalo de sondeo, para que el marcador tenga momentos quietos y no viva animándose—.
+Verificado midiendo el DOM: 10 posiciones intermedias con deltas decrecientes (7, 7, 7, 5,
+4, 3, 2, 2, 1 px), no un salto.
+
+**La decisión que no es obvia**
+Hay un tope: más de 2 km, salta. Deslizar suavemente veinte kilómetros en un segundo
+dibuja un trayecto que el vehículo nunca hizo — es una animación que miente. Un salto
+grande casi siempre significa que el equipo estuvo sin reportar, y esa discontinuidad es
+información: merece leerse como corte, no como viaje.
+
+Con `prefers-reduced-motion` no hay deslizamiento más rápido: no hay deslizamiento.
