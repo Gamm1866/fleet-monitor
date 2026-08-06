@@ -115,7 +115,11 @@ export default function Monitor() {
         </div>
 
         <div className="flex min-h-0 flex-col overflow-y-auto border-t border-border-subtle lg:border-l lg:border-t-0">
-          {vehicles.length > 1 ? (
+          {/* La lista se muestra aunque haya un solo vehículo. Ocultarla
+              esconde el mecanismo de selección justo cuando la flota es chica,
+              que es cuando el operador todavía está aprendiendo la
+              herramienta. */}
+          {vehicles.length > 0 ? (
             <VehicleList
               vehicles={vehicles}
               selectedId={selected?.id}

@@ -39,8 +39,13 @@ export function StatusPill({ status, className }: StatusPillProps) {
 
   return (
     <span
+      // `key` fuerza el remontaje al cambiar de estado y el realce vuelve a
+      // correr desde cero. Un cambio de estado es la actualización más
+      // importante de la tarjeta: si la velocidad se realza y esto no, la
+      // jerarquía de la atención queda invertida.
+      key={status}
       className={cx(
-        'inline-flex items-center gap-2 rounded-chip px-2 py-1',
+        'inline-flex animate-value-in items-center gap-2 rounded-chip px-2 py-1',
         'text-label font-medium uppercase ring-1 ring-inset',
         tone.text,
         tone.ring,

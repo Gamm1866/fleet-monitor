@@ -91,9 +91,12 @@ export function VehiclePanel({
           placeholder="000 %"
           loading={loading}
           value={
-            vehicle?.batteryLevel === undefined
-              ? undefined
-              : `${Math.round(vehicle.batteryLevel)} %`
+            vehicle?.batteryLevel === undefined ? undefined : (
+              <>
+                <AnimatedValue value={Math.round(vehicle.batteryLevel)} />
+                <span className="text-text-tertiary"> %</span>
+              </>
+            )
           }
         />
         <DataRow
