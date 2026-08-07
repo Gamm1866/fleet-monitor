@@ -4,7 +4,7 @@ import { MapLayers, type BaseLayer } from '@/components/map/MapLayers'
 import { RoutePlayback } from '@/components/map/RoutePlayback'
 import { VehicleMap } from '@/components/map/VehicleMap'
 import { FleetPanel } from '@/components/panel/FleetPanel'
-import { VehiclePanel } from '@/components/panel/VehiclePanel'
+import { VehicleDetailPanel } from '@/components/panel/VehicleDetailPanel'
 import { ErrorBanner, ErrorState } from '@/components/ui/ErrorState'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { useFleet } from '@/hooks/use-fleet'
@@ -35,6 +35,8 @@ export default function Monitor() {
   const [isFollowing, setIsFollowing] = useState(true)
   const [baseLayer, setBaseLayer] = useState<BaseLayer>('auto')
   const [weatherEnabled, setWeatherEnabled] = useState(false)
+  const [isFleetOpen, setIsFleetOpen] = useState(true)
+  const [isFleetMinimized, setIsFleetMinimized] = useState(false)
   // `null` = en vivo. Un índice fija el marcador fantasma en un punto del
   // recorrido histórico sin tocar la posición real que sigue llegando.
   const [playbackIndex, setPlaybackIndex] = useState<number | null>(null)
@@ -56,6 +58,13 @@ export default function Monitor() {
   const handleSelect = useCallback((id: number) => {
     setPickedId(id)
     setIsFollowing(true)
+    setPlaybackIndex(null)
+  }, [])
+
+  // Cerrar el detalle es deseleccionar: la selección ya es la fuente de
+  // verdad de qué muestra el mapa y el panel, no hace falta un estado aparte.
+  const handleDeselect = useCallback(() => {
+    setPickedId(undefined)
     setPlaybackIndex(null)
   }, [])
 
@@ -84,6 +93,13 @@ export default function Monitor() {
 
     return nearest.geofence.name
   }, [selected?.position, geofences])
+
+  // Ancho actual de lo que ocupa la flota en el borde izquierdo, para correr
+  // los controles que viven a su derecha (Seguir, capas) sin superponerse.
+  // Cerrada deja un botón lanzador de 36px; minimizada, un riel de 44px;
+  // abierta, el panel completo de 288px (w-72 en FleetPanel).
+  const fleetDockWidth =
+    vehicles.length === 0 ? 0 : !isFleetOpen ? 48 : isFleetMinimized ? 44 : 288
 
   const previewPosition =
     playbackIndex !== null && routePositions?.[playbackIndex]
@@ -130,99 +146,113 @@ export default function Monitor() {
             <ErrorBanner onRetry={() => void refetch()} isRetrying={isFetching} />
           ) : null}
 
-      {/* 60/40: el mapa domina porque responde "dónde", que es la pregunta que
-          trae al operador. El panel se lleva el 40% porque responde "cómo
-          está", que es la que lo retiene. Debajo de lg el mapa pasa arriba y
-          el panel abajo, sin achicar ninguno a un tamaño inútil. */}
-      <main className="grid min-h-0 flex-1 grid-rows-[minmax(16rem,45vh)_1fr] lg:grid-cols-[3fr_2fr] lg:grid-rows-1">
-        <div className="relative min-h-0">
-          <VehicleMap
+      {/* El mapa ocupa toda la pantalla: lista y detalle son ventanas
+          flotantes encima, no columnas que le quitan ancho. Es la vista
+          "general" por defecto —mapa encuadrado a toda la flota— y el
+          detalle aparece como una ventana más cuando se elige un vehículo,
+          en vez de reservarle un tercio de la pantalla todo el tiempo. */}
+      <main className="relative min-h-0 flex-1">
+        <VehicleMap
+          vehicles={vehicles}
+          selectedId={selected?.id}
+          onSelect={handleSelect}
+          route={route}
+          isFollowing={isFollowing}
+          onFollowingChange={setIsFollowing}
+          baseLayer={baseLayer}
+          weatherEnabled={weatherEnabled}
+          geofences={geofences}
+          previewPosition={previewPosition}
+        />
+
+        {!isPending && vehicles.length === 0 ? (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <p className="pointer-events-auto rounded-control bg-surface-raised/95 px-4 py-3 text-data-md text-text-secondary shadow-raised ring-1 ring-border-default backdrop-blur-sm">
+              La cuenta no tiene vehículos registrados.
+            </p>
+          </div>
+        ) : null}
+
+        {/* Flota acoplada al borde izquierdo, a todo el alto — mismo
+            lenguaje que un sidebar de mapa real, no una tarjeta flotando.
+            Seguir y capas se corren para no quedar tapados por el carril. */}
+        {vehicles.length > 0 ? (
+          <FleetPanel
             vehicles={vehicles}
             selectedId={selected?.id}
             onSelect={handleSelect}
-            route={route}
-            isFollowing={isFollowing}
-            onFollowingChange={setIsFollowing}
-            baseLayer={baseLayer}
-            weatherEnabled={weatherEnabled}
-            geofences={geofences}
-            previewPosition={previewPosition}
+            isOpen={isFleetOpen}
+            isMinimized={isFleetMinimized}
+            onOpenChange={setIsFleetOpen}
+            onMinimizedChange={setIsFleetMinimized}
           />
-          {/* Sobre el mapa y no en la barra superior: el control pertenece a lo
-              que modifica. Los controles de Leaflet viven en z-400, así que el
-              toggle tiene que ir por encima para no quedar tapado. */}
-          <div className="pointer-events-none absolute left-3 top-3 z-[500]">
-            <FollowToggle
-              isFollowing={isFollowing}
-              onChange={setIsFollowing}
-              vehicleName={selected?.name}
-            />
-          </div>
+        ) : null}
 
-          {/* Capas y flota comparten esquina: dos controles del mismo tipo
-              —"qué muestra el mapa"— en vez de repartirlos por las cuatro
-              puntas sin motivo. La ventana de flota es flotante y no columna
-              fija: ver toda la flota y ver el detalle de una son dos
-              preguntas distintas, y la primera no necesita quedarse abierta
-              una vez que el operador ya eligió a quién mirar. */}
-          <div className="pointer-events-none absolute right-3 top-3 z-[500] flex items-start gap-2">
-            <MapLayers
-              baseLayer={baseLayer}
-              onBaseLayerChange={setBaseLayer}
-              weatherEnabled={weatherEnabled}
-              onWeatherChange={setWeatherEnabled}
-            />
-            {vehicles.length > 0 ? (
-              <FleetPanel vehicles={vehicles} selectedId={selected?.id} onSelect={handleSelect} />
-            ) : null}
-          </div>
+        {/* Detalle del vehículo acoplado al borde derecho, a todo el alto.
+            Cerrarlo es deseleccionar: vuelve a la vista general en vez de
+            dejar un panel vacío flotando. */}
+        {selected ? (
+          <VehicleDetailPanel
+            vehicle={selected}
+            loading={isPending}
+            routePoints={route?.length}
+            routeWindowHours={ROUTE_WINDOW_HOURS}
+            outsideGeofenceName={outsideGeofenceName}
+            onClose={handleDeselect}
+          />
+        ) : null}
 
-          {/* Reproducción del recorrido: solo tiene sentido con el vehículo
-              seleccionado y al menos dos posiciones — un solo punto no es
-              nada que recorrer. */}
-          {routePositions && routePositions.length > 1 ? (
-            <div className="pointer-events-none absolute bottom-3 left-3 z-[500]">
-              <RoutePlayback
-                positions={routePositions}
-                index={playbackIndex}
-                onIndexChange={setPlaybackIndex}
-              />
-            </div>
-          ) : null}
+        {/* Sobre el mapa y no en la barra superior: el control pertenece a lo
+            que modifica. Los controles de Leaflet viven en z-400, así que el
+            toggle tiene que ir por encima para no quedar tapado. Se corre a
+            la derecha del carril de flota, sea cual sea su ancho actual. */}
+        <div
+          className="pointer-events-none absolute top-3 z-[500] flex items-start gap-2 transition-[left] duration-normal ease-[var(--ease)]"
+          style={{ left: fleetDockWidth + 12 }}
+        >
+          <FollowToggle
+            isFollowing={isFollowing}
+            onChange={setIsFollowing}
+            vehicleName={selected?.name}
+          />
+          <MapLayers
+            baseLayer={baseLayer}
+            onBaseLayerChange={setBaseLayer}
+            weatherEnabled={weatherEnabled}
+            onWeatherChange={setWeatherEnabled}
+          />
         </div>
 
-        <div className="flex min-h-0 flex-col overflow-y-auto border-t border-border-subtle lg:border-l lg:border-t-0">
-          {!isPending && vehicles.length === 0 ? (
-            <p className="p-6 text-data-md text-text-secondary">
-              La cuenta no tiene vehículos registrados.
-            </p>
-          ) : (
-            <VehiclePanel
-              vehicle={selected}
-              loading={isPending}
-              routePoints={route?.length}
-              routeWindowHours={ROUTE_WINDOW_HOURS}
-              outsideGeofenceName={outsideGeofenceName}
+        {/* Reproducción del recorrido: centrada abajo para no chocar con
+            ninguno de los dos carriles laterales. Solo tiene sentido con el
+            vehículo seleccionado y al menos dos posiciones — un solo punto
+            no es nada que recorrer. */}
+        {routePositions && routePositions.length > 1 ? (
+          <div className="pointer-events-none absolute bottom-3 left-1/2 z-[500] -translate-x-1/2">
+            <RoutePlayback
+              positions={routePositions}
+              index={playbackIndex}
+              onIndexChange={setPlaybackIndex}
             />
-          )}
+          </div>
+        ) : null}
+      </main>
 
-          <footer className="mt-auto flex items-center gap-2 border-t border-border-subtle px-6 py-3 text-data-sm text-text-tertiary">
-            <span
-              aria-hidden="true"
-              className={
-                isFetching
-                  ? 'size-1.5 rounded-full bg-status-online'
-                  : 'size-1.5 rounded-full bg-text-quaternary'
-              }
-            />
-            {dataUpdatedAt ? (
-              <span className="tabular">Última lectura {formatTime(dataUpdatedAt)}</span>
-            ) : (
-              <span>Conectando…</span>
-            )}
-          </footer>
-            </div>
-          </main>
+      <footer className="flex items-center gap-2 border-t border-border-subtle px-6 py-3 text-data-sm text-text-tertiary">
+        <span
+          aria-hidden="true"
+          className={
+            isFetching
+              ? 'size-1.5 rounded-full bg-status-online'
+              : 'size-1.5 rounded-full bg-text-quaternary'
+          }
+        />
+        {dataUpdatedAt ? (
+          <span className="tabular">Última lectura {formatTime(dataUpdatedAt)}</span>
+        ) : (
+          <span>Conectando…</span>
+        )}
+      </footer>
         </>
       )}
     </div>

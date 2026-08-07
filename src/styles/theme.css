@@ -96,6 +96,11 @@
   --status-critical: var(--red-light); /* 6.47:1 */
 
   --accent: var(--blue-light); /* 6.70:1 */
+  /* Texto sobre un relleno de --accent (p. ej. la pastilla activa del
+     selector de tema). Sin este token, `text-text-on-accent` no resuelve a
+     ningún color de Tailwind y el texto hereda el color de cuerpo — negro
+     casi puro sobre este azul da ~2,8:1, muy por debajo de AA. */
+  --text-on-accent: var(--n-0); /* 6.70:1 */
 
   /* Untitled UI — superficies */
   --color-bg-primary: var(--n-0);
@@ -179,6 +184,11 @@
   --status-critical: var(--red-dark); /* 6.62:1 */
 
   --accent: var(--blue-dark); /* 7.25:1 */
+  /* En oscuro --accent es un azul CLARO —pensado como texto sobre la
+     superficie oscura, no como relleno— así que el texto que va ENCIMA de un
+     relleno con este color necesita ser oscuro, no blanco: blanco da ~2,1:1,
+     este casi negro da ~8,2:1. */
+  --text-on-accent: var(--n-950); /* 8.22:1 */
 
   --color-bg-primary: var(--n-900);
   --color-bg-primary_hover: var(--n-850);
@@ -268,6 +278,10 @@
   --color-status-critical: var(--status-critical);
 
   --color-accent: var(--accent);
+  /* Sin este alias, Tailwind nunca genera la clase `text-text-on-accent` —
+     no alcanza con definir la variable en :root/.dark-mode, el nombre tiene
+     que registrarse acá para que exista la utilidad. */
+  --color-text-on-accent: var(--text-on-accent);
 
   /* Tipografía. Geist para el chrome, Geist Mono para TODO dato en vivo:
      en una sala de control los números son el contenido, y darles su propia

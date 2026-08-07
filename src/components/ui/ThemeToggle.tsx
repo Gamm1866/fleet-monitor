@@ -1,23 +1,24 @@
-import { Monitor01, Moon01, Sun } from '@untitledui/icons'
+import { Moon01, Sun } from '@untitledui/icons'
 import { cx } from '@/utils/cx'
 import { useTheme, type Theme } from '@/providers/theme-provider'
 
 const OPTIONS: { value: Theme; label: string; Icon: typeof Sun }[] = [
   { value: 'light', label: 'Claro', Icon: Sun },
   { value: 'dark', label: 'Oscuro', Icon: Moon01 },
-  { value: 'system', label: 'Sistema', Icon: Monitor01 },
 ]
 
 /**
- * Control de tema de tres posiciones.
+ * Control de tema de dos posiciones.
  *
- * Es un radiogroup nativo, no tres botones: el navegador ya da navegación con
+ * Es un radiogroup nativo, no dos botones: el navegador ya da navegación con
  * flechas, gestión de foco como un solo tab stop y el anuncio correcto
- * ("Oscuro, opción 2 de 3, seleccionada"). Reimplementar eso con botones y
+ * ("Oscuro, opción 2 de 2, seleccionada"). Reimplementar eso con botones y
  * aria-pressed es más código y peor resultado.
  *
- * Tres opciones y no dos porque "Sistema" es un estado real y distinto: seguir
- * la preferencia del sistema operativo no es lo mismo que haber elegido claro.
+ * Sin "Sistema" en el selector a pedido: `theme-provider` sigue resolviendo
+ * la preferencia del SO como default la primera vez que alguien abre la app
+ * (nadie elige explícitamente "Sistema" acá, pero un visitante nuevo igual
+ * arranca en el tema correcto para su equipo).
  */
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme()
