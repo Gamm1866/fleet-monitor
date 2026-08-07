@@ -44,10 +44,11 @@ export default function Monitor() {
   // no es lo mismo que no tener nada que mostrar.
   const hasData = data !== undefined
   // El seleccionado se deriva en vez de sincronizarse con un efecto: si el
-  // vehículo elegido desaparece de la flota, la interfaz cae sola al primero
-  // en lugar de quedarse apuntando a un id que ya no existe.
-  const selected =
-    vehicles.find((vehicle) => vehicle.id === pickedId) ?? vehicles.at(0)
+  // vehículo elegido desaparece de la flota, la interfaz cae sola a "ninguno"
+  // en lugar de quedarse apuntando a un id que ya no existe. Sin elegir
+  // ninguno todavía, a propósito: la primera pantalla es la flota completa
+  // —lista y mapa encuadrado a todos— no el detalle de un vehículo al azar.
+  const selected = vehicles.find((vehicle) => vehicle.id === pickedId)
 
   // Elegir un vehículo es pedir que el mapa lo lleve: el seguimiento se
   // reactiva aunque el operador lo hubiera apagado mirando otra zona, y la

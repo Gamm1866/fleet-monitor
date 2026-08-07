@@ -123,6 +123,10 @@ export function VehicleMap({
   }, [onFollowingChange])
   /** Último vehículo encuadrado. Distingue "cambió la selección" de "llegó otro sondeo". */
   const focusedRef = useRef<number>(undefined)
+  /** La vista general de la flota se encuadra una sola vez, al llegar la
+   * primera posición — no en cada sondeo, o el mapa saltaría cada vez que un
+   * vehículo se mueve mientras nadie eligió a cuál mirar todavía. */
+  const overviewFitRef = useRef(false)
   const { resolved } = useTheme()
 
   useEffect(() => {
@@ -391,6 +395,28 @@ export function VehicleMap({
       },
     ).addTo(map)
   }, [previewPosition])
+
+  // Vista general: sin nadie seleccionado todavía, la primera pantalla
+  // encuadra a toda la flota en vez de dejar el mapa centrado en Bogotá por
+  // defecto sin motivo. Es la pantalla "general" antes del detalle.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || selectedId !== undefined || overviewFitRef.current) return
+
+    const positions = vehicles
+      .filter((vehicle) => vehicle.position)
+      .map((vehicle) => L.latLng(vehicle.position!.latitude, vehicle.position!.longitude))
+
+    if (positions.length === 0) return
+
+    overviewFitRef.current = true
+
+    if (positions.length === 1) {
+      map.setView(positions[0], FOCUS_ZOOM, { animate: false })
+    } else {
+      map.fitBounds(L.latLngBounds(positions), { padding: [48, 48], maxZoom: FOCUS_ZOOM, animate: false })
+    }
+  }, [vehicles, selectedId])
 
   // Seguimiento del vehículo seleccionado.
   //

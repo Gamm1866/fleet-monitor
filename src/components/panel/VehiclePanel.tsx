@@ -84,8 +84,13 @@ export function VehiclePanel({
           {vehicle ? <ShareButton vehicleId={vehicle.id} /> : null}
         </div>
         <h2 id="vehicle-name" className="text-title text-text-primary">
-          {vehicle?.name ?? 'Sin vehículo'}
+          {vehicle?.name ?? 'Ningún vehículo seleccionado'}
         </h2>
+        {!vehicle && !loading ? (
+          <p className="text-data-sm text-text-secondary">
+            Elegí un camión de la lista para ver su detalle.
+          </p>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2">
           {vehicle ? <StatusPill status={vehicle.status} /> : null}
           {outsideGeofenceName ? (

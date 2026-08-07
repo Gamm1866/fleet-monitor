@@ -1,5 +1,5 @@
 import { cx } from '@/utils/cx'
-import { STATUS_META, type VehicleStatus } from '@/lib/status'
+import type { VehicleStatus } from '@/lib/status'
 import { formatDecimal } from '@/lib/format'
 import type { Vehicle } from '@/lib/traccar'
 
@@ -45,10 +45,11 @@ export function VehicleList({ vehicles, selectedId, onSelect }: VehicleListProps
               >
                 <span className={cx('size-2 shrink-0 rounded-full', DOT[vehicle.status])} />
                 <span className="flex-1 truncate text-data-md">{vehicle.name}</span>
+                {/* El estado ya lo dice el punto de color; acá siempre va la
+                    velocidad, dato pedido explícitamente para la vista
+                    general — el detalle aclara si es la última conocida. */}
                 <span className="tabular text-data-sm text-text-tertiary">
-                  {vehicle.status === 'moving'
-                    ? `${formatDecimal(vehicle.speedKmh)} km/h`
-                    : STATUS_META[vehicle.status].label}
+                  {formatDecimal(vehicle.speedKmh)} km/h
                 </span>
               </button>
             </li>
