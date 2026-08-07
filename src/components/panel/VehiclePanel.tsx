@@ -1,6 +1,9 @@
+import { useState } from 'react'
+import { Share07 } from '@untitledui/icons'
 import { AnimatedValue } from '@/components/ui/AnimatedValue'
 import { DataRow } from '@/components/ui/DataRow'
 import { StatusPill } from '@/components/ui/StatusPill'
+import { cx } from '@/utils/cx'
 import { formatCourse, formatDecimal, formatSilence } from '@/lib/format'
 import { STATUS_META } from '@/lib/status'
 import type { Vehicle } from '@/lib/traccar'
@@ -11,6 +14,41 @@ interface VehiclePanelProps {
   /** Puntos del recorrido dibujado en el mapa. */
   routePoints?: number
   routeWindowHours: number
+  /** Nombre del geofence más cercano si el vehículo está fuera de todos. */
+  outsideGeofenceName?: string
+}
+
+/**
+ * Copia un link de solo lectura a este vehículo.
+ *
+ * Sin token ni backend nuevo: toda la app ya es de solo lectura y sin login
+ * —el alta y el control de acceso viven en Traccar, como documenta el
+ * README— así que "compartir" es simplemente abrir el mismo monitor filtrado
+ * a un vehículo, vía un parámetro en la URL.
+ */
+function ShareButton({ vehicleId }: { vehicleId: number }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleShare = async () => {
+    const url = `${window.location.origin}/?share=${vehicleId}`
+    await navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleShare()}
+      className="flex items-center gap-1.5 rounded-control px-2.5 py-1 text-data-sm text-text-secondary transition-colors duration-fast hover:bg-bg-active hover:text-text-primary"
+    >
+      <Share07 aria-hidden="true" className="size-3.5" />
+      {copied ? 'Link copiado' : 'Compartir'}
+      <span aria-live="polite" className="sr-only">
+        {copied ? 'Link de solo lectura copiado al portapapeles' : ''}
+      </span>
+    </button>
+  )
 }
 
 /**
@@ -25,6 +63,7 @@ export function VehiclePanel({
   loading,
   routePoints,
   routeWindowHours,
+  outsideGeofenceName,
 }: VehiclePanelProps) {
   const position = vehicle?.position
   // Con el dispositivo en silencio, todo lo que sigue en pantalla es un
@@ -40,11 +79,25 @@ export function VehiclePanel({
       aria-busy={loading}
     >
       <header className="flex flex-col gap-3">
-        <p className="text-label uppercase text-text-tertiary">Vehículo seleccionado</p>
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-label uppercase text-text-tertiary">Vehículo seleccionado</p>
+          {vehicle ? <ShareButton vehicleId={vehicle.id} /> : null}
+        </div>
         <h2 id="vehicle-name" className="text-title text-text-primary">
           {vehicle?.name ?? 'Sin vehículo'}
         </h2>
-        {vehicle ? <StatusPill status={vehicle.status} className="self-start" /> : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {vehicle ? <StatusPill status={vehicle.status} /> : null}
+          {outsideGeofenceName ? (
+            <span
+              className={cx(
+                'rounded-control bg-status-stale/15 px-2 py-0.5 text-data-sm text-status-stale',
+              )}
+            >
+              Fuera de {outsideGeofenceName}
+            </span>
+          ) : null}
+        </div>
         {isSilent && vehicle ? (
           <p className="text-data-sm text-text-tertiary">
             Los datos de abajo son de la última transmisión,{' '}

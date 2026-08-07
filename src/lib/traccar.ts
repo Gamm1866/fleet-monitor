@@ -6,6 +6,8 @@ import {
 } from './status'
 import { knotsToKmh } from './format'
 import { fetchRoadRoute } from './osrm'
+import { bearingDegrees, haversineMeters } from './geo'
+import { type Geofence, parseCircleArea } from './geofence'
 
 export interface TraccarDevice {
   id: number
@@ -216,27 +218,6 @@ interface DemoRoadRoute {
 let demoRoadRoute: DemoRoadRoute | null = null
 let demoRoadRoutePromise: Promise<void> | null = null
 
-function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const EARTH_RADIUS_M = 6_371_000
-  const toRad = (deg: number) => (deg * Math.PI) / 180
-  const dLat = toRad(lat2 - lat1)
-  const dLon = toRad(lon2 - lon1)
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
-  return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(a))
-}
-
-function bearingDegrees(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const toRad = (deg: number) => (deg * Math.PI) / 180
-  const dLon = toRad(lon2 - lon1)
-  const y = Math.sin(dLon) * Math.cos(toRad(lat2))
-  const x =
-    Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
-    Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon)
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
-}
-
 function ensureDemoRoadRoute(): Promise<void> {
   demoRoadRoutePromise ??= fetchRoadRoute(DEMO_ROUTE_FROM, DEMO_ROUTE_TO)
     .then(({ coordinates }) => {
@@ -425,6 +406,43 @@ function demoRoute(profile: DemoProfile, serverTime: number): TraccarPosition[] 
       attributes: {},
     }
   })
+}
+
+interface TraccarGeofence {
+  id: number
+  name: string
+  area: string
+}
+
+/** Mismo origen que la flota demo: la zona real que el camión "en movimiento"
+ * cruza al patrullar, para que la funcionalidad se vea sin tener que dar de
+ * alta un geofence en Traccar primero. */
+const DEMO_GEOFENCE: Geofence = {
+  id: -100,
+  name: 'Zona demo — Usaquén',
+  center: [DEMO_ORIGIN.latitude, DEMO_ORIGIN.longitude],
+  radiusMeters: 1200,
+  isDemo: true,
+}
+
+export async function fetchGeofences(): Promise<Geofence[]> {
+  const { data } = await get<TraccarGeofence[]>('geofences')
+
+  const real = data
+    .map((geofence): Geofence | null => {
+      const circle = parseCircleArea(geofence.area)
+      if (!circle) return null
+      return {
+        id: geofence.id,
+        name: geofence.name,
+        center: circle.center,
+        radiusMeters: circle.radiusMeters,
+        isDemo: false,
+      }
+    })
+    .filter((geofence): geofence is Geofence => geofence !== null)
+
+  return real.length > 0 ? real : [DEMO_GEOFENCE]
 }
 
 function withDemoVehicles(vehicles: Vehicle[], serverTime: number): Vehicle[] {

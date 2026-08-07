@@ -4,8 +4,10 @@ import 'leaflet/dist/leaflet.css'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { animateMarkerTo } from './animate-marker'
 import { markerHtml, markerSize } from './marker'
+import type { BaseLayer } from './MapLayers'
 import { useTheme } from '@/providers/theme-provider'
 import { STATUS_META } from '@/lib/status'
+import type { Geofence } from '@/lib/geofence'
 import type { Vehicle } from '@/lib/traccar'
 
 interface VehicleMapProps {
@@ -18,6 +20,13 @@ interface VehicleMapProps {
   isFollowing: boolean
   /** El mapa avisa cuando el operador toma el control moviéndolo con la mano. */
   onFollowingChange: (isFollowing: boolean) => void
+  baseLayer: BaseLayer
+  weatherEnabled: boolean
+  geofences?: Geofence[]
+  /** Posición histórica del vehículo seleccionado mientras se reproduce el
+   * recorrido. `undefined` en vivo: no reemplaza al marcador real, se dibuja
+   * aparte para no tocar la animación de la posición actual. */
+  previewPosition?: { latitude: number; longitude: number }
 }
 
 /** Bogotá. Encuadre inicial mientras no hay ninguna posición que mostrar. */
@@ -32,6 +41,33 @@ const TILES = {
 
 const ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+
+/** Satélite (Esri) y terreno (OpenTopoMap): las dos alternativas gratis sin
+ * API key. Ninguna cambia con el tema — son fotos y curvas de nivel, no hay
+ * "satélite oscuro". */
+const SATELLITE_TILES =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+const SATELLITE_ATTRIBUTION = '&copy; Esri, Maxar, Earthstar Geographics'
+const TERRAIN_TILES = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'
+const TERRAIN_ATTRIBUTION =
+  '&copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)'
+
+/** Radar de lluvia de RainViewer: público, gratis, sin API key. Es la única
+ * capa de clima real disponible sin contratar un proveedor de pago. */
+async function fetchRainViewerTileUrl(): Promise<string | null> {
+  try {
+    const response = await fetch('https://api.rainviewer.com/public/weather-maps.json')
+    if (!response.ok) return null
+    const data = (await response.json()) as {
+      radar?: { past?: { path: string }[] }
+    }
+    const latest = data.radar?.past?.at(-1)
+    if (!latest) return null
+    return `https://tilecache.rainviewer.com${latest.path}/256/{z}/{x}/{y}/2/1_1.png`
+  } catch {
+    return null
+  }
+}
 
 function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -60,13 +96,20 @@ export function VehicleMap({
   route,
   isFollowing,
   onFollowingChange,
+  baseLayer,
+  weatherEnabled,
+  geofences,
+  previewPosition,
 }: VehicleMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map>(null)
   const tileRef = useRef<L.TileLayer>(null)
+  const weatherRef = useRef<L.TileLayer>(null)
   const markersRef = useRef(new Map<number, L.Marker>())
   const routeRef = useRef<L.Polyline>(null)
   const originRef = useRef<L.CircleMarker>(null)
+  const geofenceLayersRef = useRef<L.Circle[]>([])
+  const previewMarkerRef = useRef<L.CircleMarker>(null)
   /** Cancelador de la animación en curso de cada marcador. */
   const animationsRef = useRef(new Map<number, () => void>())
   /** Última firma visual dibujada por cada marcador. */
@@ -125,17 +168,54 @@ export function VehicleMap({
 
   // El basemap se cambia con el tema. Un mapa claro dentro de una interfaz
   // oscura es la fuente de luz más brillante de la pantalla y arruina la
-  // jerarquía que sostiene todo lo demás.
+  // jerarquía que sostiene todo lo demás. Satélite y terreno ganan sobre el
+  // tema: son capas fotográficas, no hay versión oscura de una foto satelital.
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
 
+    const [url, attribution] =
+      baseLayer === 'satellite'
+        ? [SATELLITE_TILES, SATELLITE_ATTRIBUTION]
+        : baseLayer === 'terrain'
+          ? [TERRAIN_TILES, TERRAIN_ATTRIBUTION]
+          : [TILES[resolved], ATTRIBUTION]
+
     tileRef.current?.remove()
-    tileRef.current = L.tileLayer(TILES[resolved], {
-      attribution: ATTRIBUTION,
-      maxZoom: 19,
-    }).addTo(map)
-  }, [resolved])
+    tileRef.current = L.tileLayer(url, { attribution, maxZoom: 19 }).addTo(map)
+    // La capa de clima va sobre el mapa base: si el base se reconstruye,
+    // vuelve a quedar debajo del radar en vez de encima.
+    weatherRef.current?.bringToFront()
+  }, [resolved, baseLayer])
+
+  // Overlay de clima: se pide una sola vez por activación, no en cada
+  // sondeo — el radar de RainViewer no cambia cada 8 segundos.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    weatherRef.current?.remove()
+    weatherRef.current = null
+    if (!weatherEnabled) return
+
+    let cancelled = false
+    fetchRainViewerTileUrl().then((url) => {
+      if (cancelled || !url || !mapRef.current) return
+      // RainViewer no genera tiles más allá de zoom 12: pedirlos a un zoom
+      // mayor devuelve un tile de "no soportado". `maxNativeZoom` hace que
+      // Leaflet reuse y escale el tile de zoom 12 en vez de pedir uno que no
+      // existe.
+      weatherRef.current = L.tileLayer(url, {
+        opacity: 0.55,
+        zIndex: 450,
+        maxNativeZoom: 12,
+      }).addTo(mapRef.current)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [weatherEnabled])
 
   useEffect(() => {
     const map = mapRef.current
@@ -257,6 +337,60 @@ export function VehicleMap({
       interactive: false,
     }).addTo(map)
   }, [route])
+
+  // Geofences: círculos fijos, no cambian con el sondeo de posición.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    for (const circle of geofenceLayersRef.current) circle.remove()
+    geofenceLayersRef.current = []
+
+    if (!geofences) return
+
+    const styles = getComputedStyle(document.documentElement)
+    const color = styles.getPropertyValue('--color-status-stale').trim()
+
+    geofenceLayersRef.current = geofences.map((geofence) =>
+      L.circle(geofence.center, {
+        radius: geofence.radiusMeters,
+        color,
+        weight: 1.5,
+        fillColor: color,
+        fillOpacity: 0.06,
+        dashArray: geofence.isDemo ? '6 4' : undefined,
+        interactive: false,
+      }).addTo(map),
+    )
+  }, [geofences])
+
+  // Marcador fantasma de la reproducción: aparte del marcador en vivo, para
+  // no interferir con su animación de deslizamiento entre sondeos.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    previewMarkerRef.current?.remove()
+    previewMarkerRef.current = null
+
+    if (!previewPosition) return
+
+    const styles = getComputedStyle(document.documentElement)
+    const color = styles.getPropertyValue('--color-accent').trim()
+    const outline = styles.getPropertyValue('--color-surface').trim()
+
+    previewMarkerRef.current = L.circleMarker(
+      [previewPosition.latitude, previewPosition.longitude],
+      {
+        radius: 7,
+        color: outline,
+        weight: 2,
+        fillColor: color,
+        fillOpacity: 0.9,
+        interactive: false,
+      },
+    ).addTo(map)
+  }, [previewPosition])
 
   // Seguimiento del vehículo seleccionado.
   //

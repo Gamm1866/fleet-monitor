@@ -1,13 +1,18 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { FollowToggle } from '@/components/map/FollowToggle'
+import { MapLayers, type BaseLayer } from '@/components/map/MapLayers'
+import { RoutePlayback } from '@/components/map/RoutePlayback'
 import { VehicleMap } from '@/components/map/VehicleMap'
 import { FleetPanel } from '@/components/panel/FleetPanel'
 import { VehiclePanel } from '@/components/panel/VehiclePanel'
 import { ErrorBanner, ErrorState } from '@/components/ui/ErrorState'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { useFleet } from '@/hooks/use-fleet'
+import { useGeofences } from '@/hooks/use-geofences'
 import { useRoute } from '@/hooks/use-route'
 import { formatTime } from '@/lib/format'
+import { haversineMeters } from '@/lib/geo'
+import { isWithinAnyGeofence } from '@/lib/geofence'
 import { ROUTE_WINDOW_HOURS } from '@/lib/traccar'
 
 /**
@@ -28,6 +33,11 @@ export default function Monitor() {
   // Arranca encendido: el enunciado pide que el mapa siga al vehículo, y esa
   // es la expectativa por defecto de un monitor. Apagarlo es la excepción.
   const [isFollowing, setIsFollowing] = useState(true)
+  const [baseLayer, setBaseLayer] = useState<BaseLayer>('auto')
+  const [weatherEnabled, setWeatherEnabled] = useState(false)
+  // `null` = en vivo. Un índice fija el marcador fantasma en un punto del
+  // recorrido histórico sin tocar la posición real que sigue llegando.
+  const [playbackIndex, setPlaybackIndex] = useState<number | null>(null)
 
   const vehicles = data?.vehicles ?? []
   // `data` sobrevive al error gracias a `keepPreviousData`: haber fallado ahora
@@ -40,16 +50,47 @@ export default function Monitor() {
     vehicles.find((vehicle) => vehicle.id === pickedId) ?? vehicles.at(0)
 
   // Elegir un vehículo es pedir que el mapa lo lleve: el seguimiento se
-  // reactiva aunque el operador lo hubiera apagado mirando otra zona.
+  // reactiva aunque el operador lo hubiera apagado mirando otra zona, y la
+  // reproducción de un vehículo anterior no tiene sentido sobre el nuevo.
   const handleSelect = useCallback((id: number) => {
     setPickedId(id)
     setIsFollowing(true)
+    setPlaybackIndex(null)
   }, [])
 
   const { data: routePositions } = useRoute(selected?.id)
   const route = routePositions?.map(
     (position): [number, number] => [position.latitude, position.longitude],
   )
+  const { data: geofences } = useGeofences()
+
+  // Nombre del geofence más cercano cuando el vehículo seleccionado está
+  // fuera de todos — "fuera de zona" a secas no le dice al operador de cuál.
+  const outsideGeofenceName = useMemo(() => {
+    const position = selected?.position
+    if (!position || !geofences || geofences.length === 0) return undefined
+    if (isWithinAnyGeofence(position.latitude, position.longitude, geofences)) return undefined
+
+    const nearest = geofences.reduce((closest, geofence) => {
+      const distance = haversineMeters(
+        position.latitude,
+        position.longitude,
+        geofence.center[0],
+        geofence.center[1],
+      )
+      return distance < closest.distance ? { geofence, distance } : closest
+    }, { geofence: geofences[0], distance: Number.POSITIVE_INFINITY })
+
+    return nearest.geofence.name
+  }, [selected?.position, geofences])
+
+  const previewPosition =
+    playbackIndex !== null && routePositions?.[playbackIndex]
+      ? {
+          latitude: routePositions[playbackIndex].latitude,
+          longitude: routePositions[playbackIndex].longitude,
+        }
+      : undefined
 
   return (
     <div className="flex h-dvh flex-col bg-surface">
@@ -101,6 +142,10 @@ export default function Monitor() {
             route={route}
             isFollowing={isFollowing}
             onFollowingChange={setIsFollowing}
+            baseLayer={baseLayer}
+            weatherEnabled={weatherEnabled}
+            geofences={geofences}
+            previewPosition={previewPosition}
           />
           {/* Sobre el mapa y no en la barra superior: el control pertenece a lo
               que modifica. Los controles de Leaflet viven en z-400, así que el
@@ -113,16 +158,33 @@ export default function Monitor() {
             />
           </div>
 
-          {/* Ventana flotante, no columna fija: ver toda la flota y ver el
-              detalle de una son dos preguntas distintas, y la primera no
-              necesita quedarse abierta una vez que el operador ya eligió a
-              quién mirar. */}
-          {vehicles.length > 0 ? (
-            <div className="pointer-events-none absolute right-3 top-3 z-[500]">
-              <FleetPanel
-                vehicles={vehicles}
-                selectedId={selected?.id}
-                onSelect={handleSelect}
+          {/* Capas y flota comparten esquina: dos controles del mismo tipo
+              —"qué muestra el mapa"— en vez de repartirlos por las cuatro
+              puntas sin motivo. La ventana de flota es flotante y no columna
+              fija: ver toda la flota y ver el detalle de una son dos
+              preguntas distintas, y la primera no necesita quedarse abierta
+              una vez que el operador ya eligió a quién mirar. */}
+          <div className="pointer-events-none absolute right-3 top-3 z-[500] flex items-start gap-2">
+            <MapLayers
+              baseLayer={baseLayer}
+              onBaseLayerChange={setBaseLayer}
+              weatherEnabled={weatherEnabled}
+              onWeatherChange={setWeatherEnabled}
+            />
+            {vehicles.length > 0 ? (
+              <FleetPanel vehicles={vehicles} selectedId={selected?.id} onSelect={handleSelect} />
+            ) : null}
+          </div>
+
+          {/* Reproducción del recorrido: solo tiene sentido con el vehículo
+              seleccionado y al menos dos posiciones — un solo punto no es
+              nada que recorrer. */}
+          {routePositions && routePositions.length > 1 ? (
+            <div className="pointer-events-none absolute bottom-3 left-3 z-[500]">
+              <RoutePlayback
+                positions={routePositions}
+                index={playbackIndex}
+                onIndexChange={setPlaybackIndex}
               />
             </div>
           ) : null}
@@ -139,6 +201,7 @@ export default function Monitor() {
               loading={isPending}
               routePoints={route?.length}
               routeWindowHours={ROUTE_WINDOW_HOURS}
+              outsideGeofenceName={outsideGeofenceName}
             />
           )}
 

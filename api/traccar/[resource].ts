@@ -5,7 +5,7 @@ const UPSTREAM = 'https://demo.traccar.org'
 // Allowlist estricta: el proxy lleva credenciales de la cuenta Traccar,
 // asi que solo puede leer estos dos recursos. Sin esto seria un relay
 // abierto contra la cuenta (se podrian enviar comandos al dispositivo).
-const ALLOWED = new Set(['devices', 'positions'])
+const ALLOWED = new Set(['devices', 'positions', 'geofences'])
 
 export default async function handler(
   req: IncomingMessage,
