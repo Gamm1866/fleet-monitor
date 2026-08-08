@@ -2,7 +2,6 @@ import {
   LOST_AFTER_MINUTES,
   MOVING_ABOVE_KMH,
   STALE_AFTER_MINUTES,
-  STATUS_META,
   type VehicleStatus,
 } from './status'
 import { knotsToKmh } from './format'
@@ -532,16 +531,20 @@ export async function fetchFleet(): Promise<FleetSnapshot> {
     return { vehicles: withDemoVehicles([], serverTime), serverTime }
   }
 
-  // `/positions` sin parámetros devuelve un array vacío en la instancia demo.
-  // Hay que pedir explícitamente los deviceId, o el panel se queda en blanco
-  // sin que ninguna petición falle.
-  const params = new URLSearchParams()
-  for (const device of devices) {
-    params.append('deviceId', String(device.id))
-  }
-
-  const { data: positions } = await get<TraccarPosition[]>('positions', params)
-  const byDevice = new Map(positions.map((position) => [position.deviceId, position]))
+  // `/positions` sin parámetros devuelve un array vacío en la instancia demo,
+  // y solo respeta el PRIMER `deviceId` cuando se mandan varios en la misma
+  // consulta —con un dispositivo pasaba desapercibido, con varios se traía
+  // la posición de uno solo y el resto quedaba en blanco sin que ninguna
+  // petición fallara. Una consulta por dispositivo, en paralelo.
+  const positionLists = await Promise.all(
+    devices.map((device) => {
+      const params = new URLSearchParams({ deviceId: String(device.id) })
+      return get<TraccarPosition[]>('positions', params).then(({ data }) => data)
+    }),
+  )
+  const byDevice = new Map(
+    positionLists.flat().map((position) => [position.deviceId, position]),
+  )
 
   const vehicles = devices.map((device): Vehicle => {
     const position = byDevice.get(device.id)
@@ -555,12 +558,15 @@ export async function fetchFleet(): Promise<FleetSnapshot> {
 
     return {
       id: device.id,
-      // "Demo — <estado>", igual que los vehículos sintéticos: la prueba se
-      // ve como un solo set consistente en vez de tres "Demo — X" más un
-      // "Camión 01" con otra convención de nombre. El nombre real del
-      // dispositivo (`device.name`) no se pierde — sigue en `uniqueId`/los
-      // datos del proxy, esto solo cambia lo que se muestra.
-      name: `Demo — ${STATUS_META[status].label}`,
+      // El nombre real del dispositivo, no un alias "Demo — <estado>": con
+      // varios dispositivos reales dados de alta, todos DECAEN a "lost" en
+      // paralelo en cuanto pasan 30 minutos sin que nadie les mande una
+      // posición nueva (Traccar mide el silencio contra la hora en que
+      // llega el request, no contra el timestamp que uno le manda — no se
+      // puede fingir). Si a todos les tocara el mismo alias dinámico,
+      // terminarían mostrando el mismo nombre a la vez — la flota sintética
+      // ya cubre los estados con nombres fijos que no chocan con estos.
+      name: device.name,
       uniqueId: device.uniqueId,
       status,
       position,
