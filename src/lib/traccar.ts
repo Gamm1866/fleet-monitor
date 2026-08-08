@@ -2,6 +2,7 @@ import {
   LOST_AFTER_MINUTES,
   MOVING_ABOVE_KMH,
   STALE_AFTER_MINUTES,
+  STATUS_META,
   type VehicleStatus,
 } from './status'
 import { knotsToKmh } from './format'
@@ -154,6 +155,10 @@ export async function fetchRoute(deviceId: number): Promise<TraccarPosition[]> {
   if (demoProfile) {
     await ensureDemoRoadRoute()
     return demoRoute(demoProfile, Date.now())
+  }
+
+  if (deviceId === ALERT_DEMO_ID) {
+    return [buildAlertDemoVehicle(Date.now()).position as TraccarPosition]
   }
 
   const to = new Date()
@@ -445,11 +450,75 @@ export async function fetchGeofences(): Promise<Geofence[]> {
   return real.length > 0 ? real : [DEMO_GEOFENCE]
 }
 
+/**
+ * El caso que falta en el set fijo de arriba: un vehículo que se ve moverse
+ * y en algún momento se detiene DE VERDAD, en vivo — para que la alerta de
+ * cambio de estado (ver `use-status-alerts`) tenga algo que disparar sin
+ * esperar horas. En vez de un estado fijo, este vehículo cicla: 2 minutos
+ * en movimiento, 1 minuto detenido, y vuelve a arrancar — así la transición
+ * se puede ver (y volver a ver) en cualquier demo en vivo.
+ */
+const ALERT_DEMO_ID = -5
+const ALERT_DEMO_ORIGIN = { latitude: DEMO_ORIGIN.latitude + 0.006, longitude: DEMO_ORIGIN.longitude - 0.018 }
+const ALERT_DEMO_LAP_MS = 90_000
+const ALERT_DEMO_RADIUS_DEG = 0.006
+const ALERT_DEMO_MOVING_MS = 2 * 60_000
+const ALERT_DEMO_STOPPED_MS = 60_000
+const ALERT_DEMO_CYCLE_MS = ALERT_DEMO_MOVING_MS + ALERT_DEMO_STOPPED_MS
+
+function alertDemoOrbit(atMs: number): { latitude: number; longitude: number; course: number } {
+  const angle = ((atMs % ALERT_DEMO_LAP_MS) / ALERT_DEMO_LAP_MS) * 2 * Math.PI
+  return {
+    latitude: ALERT_DEMO_ORIGIN.latitude + Math.sin(angle) * ALERT_DEMO_RADIUS_DEG,
+    longitude: ALERT_DEMO_ORIGIN.longitude + Math.cos(angle) * ALERT_DEMO_RADIUS_DEG,
+    course: (((angle * 180) / Math.PI) + 90) % 360,
+  }
+}
+
+function buildAlertDemoVehicle(serverTime: number): Vehicle {
+  const cyclePos = serverTime % ALERT_DEMO_CYCLE_MS
+  const isMoving = cyclePos < ALERT_DEMO_MOVING_MS
+  const status: VehicleStatus = isMoving ? 'moving' : 'stopped'
+  // Mientras está "detenido" el reloj de la órbita queda congelado en el
+  // instante en que se detuvo — si no, seguiría calculando una posición
+  // nueva cada sondeo y el vehículo se vería mover estando quieto.
+  const effectiveAtMs = isMoving ? serverTime : serverTime - (cyclePos - ALERT_DEMO_MOVING_MS)
+  const point = alertDemoOrbit(effectiveAtMs)
+  const speedKmh = isMoving ? 28 : 0
+
+  const position: TraccarPosition = {
+    id: ALERT_DEMO_ID,
+    deviceId: ALERT_DEMO_ID,
+    latitude: point.latitude,
+    longitude: point.longitude,
+    speed: speedKmh * KNOTS_PER_KMH,
+    course: point.course,
+    serverTime: new Date(serverTime).toISOString(),
+    fixTime: new Date(serverTime).toISOString(),
+    attributes: { batteryLevel: 64 },
+  }
+
+  return {
+    id: ALERT_DEMO_ID,
+    name: 'Demo — Se detiene a los 2 min',
+    uniqueId: 'demo-alert-stop',
+    status,
+    position,
+    speedKmh,
+    silenceMinutes: 0,
+    batteryLevel: 64,
+  }
+}
+
 function withDemoVehicles(vehicles: Vehicle[], serverTime: number): Vehicle[] {
   const covered = new Set(vehicles.map((vehicle) => vehicle.status))
   const missing = DEMO_PROFILES.filter((profile) => !covered.has(profile.status))
 
-  return [...vehicles, ...missing.map((profile) => buildDemoVehicle(profile, serverTime))]
+  return [
+    ...vehicles,
+    ...missing.map((profile) => buildDemoVehicle(profile, serverTime)),
+    buildAlertDemoVehicle(serverTime),
+  ]
 }
 
 export async function fetchFleet(): Promise<FleetSnapshot> {
@@ -482,12 +551,18 @@ export async function fetchFleet(): Promise<FleetSnapshot> {
         ? Number.POSITIVE_INFINITY
         : Math.max(0, (serverTime - lastContact) / 60_000)
     const speedKmh = position ? knotsToKmh(position.speed) : 0
+    const status = deriveStatus(silenceMinutes, speedKmh)
 
     return {
       id: device.id,
-      name: device.name,
+      // "Demo — <estado>", igual que los vehículos sintéticos: la prueba se
+      // ve como un solo set consistente en vez de tres "Demo — X" más un
+      // "Camión 01" con otra convención de nombre. El nombre real del
+      // dispositivo (`device.name`) no se pierde — sigue en `uniqueId`/los
+      // datos del proxy, esto solo cambia lo que se muestra.
+      name: `Demo — ${STATUS_META[status].label}`,
       uniqueId: device.uniqueId,
-      status: deriveStatus(silenceMinutes, speedKmh),
+      status,
       position,
       speedKmh,
       silenceMinutes,

@@ -70,7 +70,7 @@ export function RoutePlayback({ positions, index, onIndexChange }: RoutePlayback
           setIsPlaying((value) => !value)
         }}
         aria-label={isPlaying ? 'Pausar reproducción' : 'Reproducir recorrido'}
-        className="flex size-7 shrink-0 items-center justify-center rounded-full bg-bg-active text-text-primary transition-colors duration-fast hover:bg-bg-active/70"
+        className="flex size-7 shrink-0 items-center justify-center rounded-full bg-bg-active text-text-primary transition-all duration-fast hover:bg-bg-active/70 active:scale-90"
       >
         {isPlaying ? <PauseIcon /> : <Play aria-hidden="true" className="size-3.5" />}
       </button>
@@ -99,7 +99,7 @@ export function RoutePlayback({ positions, index, onIndexChange }: RoutePlayback
             setIsPlaying(false)
             onIndexChange(null)
           }}
-          className="shrink-0 text-data-sm text-accent underline underline-offset-4"
+          className="shrink-0 rounded text-data-sm text-accent underline underline-offset-4 transition-transform duration-fast active:scale-95"
         >
           En vivo
         </button>

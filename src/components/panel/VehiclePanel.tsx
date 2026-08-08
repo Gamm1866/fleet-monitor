@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, Share07, XClose } from '@untitledui/icons'
+import { Share07 } from '@untitledui/icons'
 import { AnimatedValue } from '@/components/ui/AnimatedValue'
 import { DataRow } from '@/components/ui/DataRow'
 import { StatusPill } from '@/components/ui/StatusPill'
@@ -16,15 +16,7 @@ interface VehiclePanelProps {
   routeWindowHours: number
   /** Nombre del geofence más cercano si el vehículo está fuera de todos. */
   outsideGeofenceName?: string
-  /** Controles de la ventana flotante, cuando el panel vive sobre el mapa en
-   * vez de en una columna fija. `undefined` los oculta — así el mismo
-   * componente sirve para el monitor (flotante) y para Live Share (fijo). */
-  onMinimize?: () => void
-  onClose?: () => void
 }
-
-const WINDOW_CONTROL =
-  'flex size-6 items-center justify-center rounded text-text-tertiary transition-colors duration-fast hover:bg-bg-active hover:text-text-primary'
 
 /**
  * Copia un link de solo lectura a este vehículo.
@@ -48,7 +40,7 @@ function ShareButton({ vehicleId }: { vehicleId: number }) {
     <button
       type="button"
       onClick={() => void handleShare()}
-      className="flex items-center gap-1.5 rounded-control px-2.5 py-1 text-data-sm text-text-secondary transition-colors duration-fast hover:bg-bg-active hover:text-text-primary"
+      className="flex items-center gap-1.5 rounded-control px-2.5 py-1 text-data-sm text-text-secondary transition-all duration-fast hover:bg-bg-active hover:text-text-primary active:scale-95"
     >
       <Share07 aria-hidden="true" className="size-3.5" />
       {copied ? 'Link copiado' : 'Compartir'}
@@ -72,8 +64,6 @@ export function VehiclePanel({
   routePoints,
   routeWindowHours,
   outsideGeofenceName,
-  onMinimize,
-  onClose,
 }: VehiclePanelProps) {
   const position = vehicle?.position
   // Con el dispositivo en silencio, todo lo que sigue en pantalla es un
@@ -91,29 +81,7 @@ export function VehiclePanel({
       <header className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-2">
           <p className="text-label uppercase text-text-tertiary">Vehículo seleccionado</p>
-          <div className="flex items-center gap-1">
-            {vehicle ? <ShareButton vehicleId={vehicle.id} /> : null}
-            {onMinimize ? (
-              <button
-                type="button"
-                onClick={onMinimize}
-                aria-label="Minimizar el detalle del vehículo"
-                className={WINDOW_CONTROL}
-              >
-                <ChevronDown aria-hidden="true" className="size-4" />
-              </button>
-            ) : null}
-            {onClose ? (
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Cerrar el detalle del vehículo"
-                className={WINDOW_CONTROL}
-              >
-                <XClose aria-hidden="true" className="size-4" />
-              </button>
-            ) : null}
-          </div>
+          {vehicle ? <ShareButton vehicleId={vehicle.id} /> : null}
         </div>
         <h2 id="vehicle-name" className="text-title text-text-primary">
           {vehicle?.name ?? 'Ningún vehículo seleccionado'}
@@ -176,8 +144,10 @@ export function VehiclePanel({
           loading={loading}
           value={vehicle ? formatSilence(vehicle.silenceMinutes) : undefined}
         />
+        {/* "Batería" a secas generaba dudas: es la del rastreador GPS, no la
+            del vehículo. Traccar solo reporta la del dispositivo. */}
         <DataRow
-          label="Batería"
+          label="Batería del rastreador"
           placeholder="000 %"
           loading={loading}
           value={

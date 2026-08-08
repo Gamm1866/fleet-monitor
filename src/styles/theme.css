@@ -88,6 +88,11 @@
   --surface-sunken: var(--n-100);
   --surface: var(--n-0);
   --surface-raised: var(--n-50);
+  /* Fondo pedido puntualmente para las ventanas flotantes (#FAFAFA, no el
+     --n-50 con tinte azulado del resto de la app). En oscuro no tiene
+     sentido un blanco casi puro, así que cae al mismo valor que el resto de
+     las superficies elevadas. */
+  --panel-surface: #fafafa;
 
   /* Dominio: estado del vehículo */
   --status-online: var(--green-light); /* 5.48:1 */
@@ -177,6 +182,7 @@
   --surface-sunken: var(--n-950);
   --surface: var(--n-900);
   --surface-raised: var(--n-850);
+  --panel-surface: var(--n-850);
 
   --status-online: var(--green-dark); /* 9.52:1 */
   --status-offline: var(--n-500); /* 5.35:1 */
@@ -265,6 +271,7 @@
   --color-surface-sunken: var(--surface-sunken);
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
+  --color-panel-surface: var(--panel-surface);
 
   /* Alias de dominio sobre los bordes de Untitled UI. Existen para que el
      código de la app hable de "sutil" y "por defecto" en vez de "primary" y
@@ -331,6 +338,23 @@
      no un flash: el operador tiene que percibir QUÉ cambió sin que la pantalla
      parpadee cada cinco segundos. */
   --animate-value-in: value-in var(--duration-fast) var(--ease);
+
+  /* Entrada de las ventanas flotantes (panel de flota, launcher cuando se
+     reabre): un roce, no un salto. `var(--duration-normal)` ya cae a 1ms bajo
+     `prefers-reduced-motion` desde el override global, así que no hace falta
+     un chequeo aparte acá. */
+  --animate-panel-in: panel-in var(--duration-normal) var(--ease);
+
+  @keyframes panel-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96) translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 
   @keyframes status-pulse {
     0% {

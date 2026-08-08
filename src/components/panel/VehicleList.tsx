@@ -25,8 +25,8 @@ const DOT: Record<VehicleStatus, string> = {
  */
 export function VehicleList({ vehicles, selectedId, onSelect }: VehicleListProps) {
   return (
-    <nav aria-label="Vehículos de la flota" className="border-b border-border-subtle p-3">
-      <ul className="flex flex-col gap-1">
+    <nav aria-label="Vehículos de la flota" className="p-3">
+      <ul className="flex flex-col gap-2">
         {vehicles.map((vehicle) => {
           const isSelected = vehicle.id === selectedId
 
@@ -37,10 +37,10 @@ export function VehicleList({ vehicles, selectedId, onSelect }: VehicleListProps
                 onClick={() => onSelect(vehicle.id)}
                 aria-current={isSelected ? 'true' : undefined}
                 className={cx(
-                  'flex w-full items-center gap-3 rounded-control px-3 py-2 text-left transition-colors duration-fast',
+                  'flex w-full items-center gap-3 rounded-control px-3 py-2.5 text-left shadow-[0_1px_2px_rgb(15_21_32_/_0.05)] transition-all duration-fast active:scale-[0.98]',
                   isSelected
                     ? 'bg-bg-active text-text-primary'
-                    : 'text-text-secondary hover:bg-bg-active/60',
+                    : 'bg-surface text-text-secondary hover:bg-bg-active/60',
                 )}
               >
                 <span className={cx('size-2 shrink-0 rounded-full', DOT[vehicle.status])} />

@@ -436,31 +436,24 @@ export function VehicleMap({
     const isNewSelection = focusedRef.current !== selectedId
 
     if (isNewSelection) {
-      // El recorrido llega en una consulta aparte y siempre después de la
-      // posición. Se encuadra provisionalmente sin marcar la selección como
-      // resuelta, para volver a encuadrar cuando el trazo exista.
-      if (route === undefined) {
-        map.setView(target, Math.max(map.getZoom(), FOCUS_ZOOM), { animate: false })
-        return
-      }
-
-      // Sin animación: el zoom animado de Leaflet se interrumpe con cada
-      // refetch y deja teselas de un nivel estiradas sobre otro, borrosas.
-      if (route.length > 1) {
-        // Con recorrido, el encuadre es el recorrido entero: centrar en el
-        // punto actual deja el origen fuera de pantalla y el trazo se lee como
-        // una línea que entra desde la nada. `maxZoom` evita que un vehículo
-        // quieto durante horas acerque el mapa hasta la vereda.
-        map.fitBounds(L.latLngBounds(route), {
-          padding: [48, 48],
-          maxZoom: FOCUS_ZOOM,
-          animate: false,
-        })
-      } else {
-        map.setView(target, Math.max(map.getZoom(), FOCUS_ZOOM), { animate: false })
-      }
-
+      // Se marca resuelto ACÁ, antes de animar, no después: el recorrido
+      // llega en una consulta aparte un instante más tarde, y si se espera a
+      // marcarlo, ese segundo render dispara un SEGUNDO viaje encima del
+      // primero — el mapa se ve dar dos saltos por un solo click.
       focusedRef.current = selectedId
+
+      const targetZoom = Math.max(map.getZoom(), FOCUS_ZOOM)
+
+      // Vuelo suave a la posición del vehículo, como al tocar un marcador en
+      // Google Maps: un solo movimiento con inicio y final relajados, ni
+      // instantáneo ni lento. `prefers-reduced-motion` cae directo al salto
+      // fijo — acá no hay margen de negociación.
+      if (prefersReducedMotion()) {
+        map.setView(target, targetZoom, { animate: false })
+      } else {
+        map.flyTo(target, targetZoom, { duration: 1, easeLinearity: 0.25 })
+      }
+
       return
     }
 

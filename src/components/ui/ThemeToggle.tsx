@@ -35,7 +35,7 @@ export function ThemeToggle() {
             key={value}
             className={cx(
               'relative flex cursor-pointer items-center gap-2 rounded-chip px-2 py-1',
-              'text-label font-medium uppercase transition-colors duration-fast ease-[var(--ease)]',
+              'text-label font-medium transition-all duration-fast ease-[var(--ease)] active:scale-95',
               // El foco se dibuja sobre la etiqueta porque el input real está
               // oculto visualmente; sin esto el anillo no se vería en absoluto.
               'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2',

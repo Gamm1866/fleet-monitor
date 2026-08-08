@@ -32,7 +32,15 @@ export function DataRow({
   const isUnavailable = !loading && value === undefined
 
   return (
-    <div className={cx('flex flex-col gap-1', className)}>
+    <div
+      className={cx(
+        // Tarjeta blanca sobre el fondo FAFAFA del panel, mismo lenguaje que
+        // las filas de la lista de flota: cada dato es su propio bloque, no
+        // texto suelto flotando sobre el panel.
+        'flex flex-col gap-1 rounded-control bg-surface px-3 py-2.5 shadow-[0_1px_2px_rgb(15_21_32_/_0.05)]',
+        className,
+      )}
+    >
       <dt className="text-label font-medium uppercase text-text-tertiary">{label}</dt>
       {/* `tabular` va acá y no en cada valor: en este producto TODO lo que va
           en un <dd> es un dato que se actualiza solo. Dejarlo opcional por

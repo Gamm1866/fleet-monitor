@@ -30,7 +30,7 @@ export function FollowToggle({ isFollowing, onChange, vehicleName }: FollowToggl
       aria-pressed={isFollowing}
       onClick={() => onChange(!isFollowing)}
       className={cx(
-        'pointer-events-auto flex items-center gap-2 rounded-control px-3 py-2 text-data-sm shadow-raised backdrop-blur-sm transition-colors duration-fast',
+        'pointer-events-auto flex items-center gap-2 rounded-control px-3 py-2 text-data-sm shadow-raised backdrop-blur-sm transition-all duration-fast active:scale-95',
         isFollowing
           ? 'bg-surface-raised text-text-primary ring-1 ring-border-default'
           : 'bg-surface-raised/85 text-text-tertiary ring-1 ring-border-subtle hover:text-text-secondary',

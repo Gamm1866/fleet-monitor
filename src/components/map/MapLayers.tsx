@@ -43,7 +43,7 @@ export function MapLayers({
         aria-label="Capas del mapa"
         onClick={() => setIsOpen((value) => !value)}
         className={cx(
-          'flex size-9 items-center justify-center rounded-control shadow-raised backdrop-blur-sm transition-colors duration-fast',
+          'flex size-9 items-center justify-center rounded-control shadow-raised backdrop-blur-sm transition-all duration-fast active:scale-90',
           isOpen
             ? 'bg-surface-raised text-accent ring-2 ring-accent'
             : 'bg-surface-raised/90 text-text-secondary ring-1 ring-border-default hover:text-text-primary',
@@ -55,7 +55,11 @@ export function MapLayers({
       {isOpen ? (
         <div
           role="menu"
-          className="absolute right-0 top-11 w-52 rounded-control bg-surface-raised p-4 shadow-raised ring-1 ring-border-default"
+          // Se abre hacia la derecha, no hacia la izquierda: el botón vive
+          // pegado al borde izquierdo de la pantalla, y un popover que se
+          // alinea a la derecha del botón (`right-0`) se estira hacia la
+          // izquierda hasta salirse de la ventana y recortarse.
+          className="absolute left-0 top-11 w-52 animate-panel-in rounded-control bg-surface-raised p-4 shadow-raised ring-1 ring-border-default"
         >
           <p className="text-label uppercase text-text-tertiary">Base del mapa</p>
           <ul className="mt-2 flex flex-col gap-1.5">
