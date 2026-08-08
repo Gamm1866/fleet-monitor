@@ -146,10 +146,14 @@ export const ROUTE_WINDOW_HOURS = 6
 
 /** Recorrido reciente de un dispositivo, en orden cronológico. */
 export async function fetchRoute(deviceId: number): Promise<TraccarPosition[]> {
-  // El demo de alerta no tiene recorrido real en Traccar: se calcula del
+  // Los demo sintéticos no tienen recorrido real en Traccar: se calculan del
   // mismo modo que su posición actual, sin llamar al proxy.
   if (deviceId === ALERT_DEMO_ID) {
     return [buildAlertDemoVehicle(Date.now()).position as TraccarPosition]
+  }
+
+  if (deviceId === STALE_DEMO_ID) {
+    return [buildStaleDemoVehicle(Date.now()).position as TraccarPosition]
   }
 
   const to = new Date()
@@ -283,8 +287,55 @@ function buildAlertDemoVehicle(serverTime: number): Vehicle {
   }
 }
 
+/**
+ * El otro caso que ningún dispositivo real puede garantizar bajo pedido.
+ *
+ * Traccar mide el silencio contra la hora en que LLEGA el request, no contra
+ * el `timestamp` que uno le manda — así que "sin reportar" (entre 2 y 30
+ * minutos de silencio) no se puede fabricar con un envío puntual: solo
+ * aparece solo, esperando, y desaparece solo a los 30 minutos. Es el único
+ * de los cuatro estados que sigue siendo sintético; los otros tres ya los
+ * cubren los dispositivos reales.
+ */
+const STALE_DEMO_ID = -3
+const STALE_DEMO_OFFSET = { lat: -0.012, lon: 0.016 }
+
+function buildStaleDemoVehicle(serverTime: number): Vehicle {
+  const silenceMinutes = STALE_AFTER_MINUTES + 4
+  const fixTime = new Date(serverTime - silenceMinutes * 60_000).toISOString()
+
+  const position: TraccarPosition = {
+    id: STALE_DEMO_ID,
+    deviceId: STALE_DEMO_ID,
+    latitude: DEMO_ORIGIN.latitude + STALE_DEMO_OFFSET.lat,
+    longitude: DEMO_ORIGIN.longitude + STALE_DEMO_OFFSET.lon,
+    speed: 0,
+    course: 0,
+    serverTime: new Date(serverTime).toISOString(),
+    fixTime,
+    attributes: { batteryLevel: 54 },
+  }
+
+  return {
+    id: STALE_DEMO_ID,
+    name: 'Demo — Sin reportar',
+    uniqueId: 'demo-stale',
+    status: 'stale',
+    position,
+    speedKmh: 0,
+    silenceMinutes,
+    batteryLevel: 54,
+  }
+}
+
 function withDemoVehicles(vehicles: Vehicle[], serverTime: number): Vehicle[] {
-  return [...vehicles, buildAlertDemoVehicle(serverTime)]
+  const hasStale = vehicles.some((vehicle) => vehicle.status === 'stale')
+
+  return [
+    ...vehicles,
+    ...(hasStale ? [] : [buildStaleDemoVehicle(serverTime)]),
+    buildAlertDemoVehicle(serverTime),
+  ]
 }
 
 export async function fetchFleet(): Promise<FleetSnapshot> {
