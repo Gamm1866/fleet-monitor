@@ -6,6 +6,7 @@ import {
 } from './status'
 import { knotsToKmh } from './format'
 import { type Geofence, parseCircleArea } from './geofence'
+import { ROUTE_POINTS, bearing } from './demo-route'
 
 export interface TraccarDevice {
   id: number
@@ -236,19 +237,33 @@ export async function fetchGeofences(): Promise<Geofence[]> {
  * se puede ver (y volver a ver) en cualquier demo en vivo.
  */
 const ALERT_DEMO_ID = -5
-const ALERT_DEMO_ORIGIN = { latitude: DEMO_ORIGIN.latitude + 0.006, longitude: DEMO_ORIGIN.longitude - 0.018 }
+// Ida y vuelta completa sobre ROUTE_POINTS (misma calle real que usa el cron
+// de Camión 02) toma esto — antes era una órbita circular matemática que
+// cruzaba de frente un humedal y un parque, sin seguir ninguna vía.
 const ALERT_DEMO_LAP_MS = 90_000
-const ALERT_DEMO_RADIUS_DEG = 0.006
 const ALERT_DEMO_MOVING_MS = 2 * 60_000
 const ALERT_DEMO_STOPPED_MS = 60_000
 const ALERT_DEMO_CYCLE_MS = ALERT_DEMO_MOVING_MS + ALERT_DEMO_STOPPED_MS
 
-function alertDemoOrbit(atMs: number): { latitude: number; longitude: number; course: number } {
-  const angle = ((atMs % ALERT_DEMO_LAP_MS) / ALERT_DEMO_LAP_MS) * 2 * Math.PI
+function alertDemoRoutePosition(atMs: number): { latitude: number; longitude: number; course: number } {
+  const cycle = ALERT_DEMO_LAP_MS * 2
+  const t = atMs % cycle
+  const forward = t <= ALERT_DEMO_LAP_MS
+  const progress = forward ? t / ALERT_DEMO_LAP_MS : (cycle - t) / ALERT_DEMO_LAP_MS
+
+  const segments = ROUTE_POINTS.length - 1
+  const scaled = progress * segments
+  const segIndex = Math.min(Math.floor(scaled), segments - 1)
+  const segT = scaled - segIndex
+  const [lat1, lon1] = ROUTE_POINTS[segIndex]
+  const [lat2, lon2] = ROUTE_POINTS[segIndex + 1]
+
+  const course = bearing(lat1, lon1, lat2, lon2)
+
   return {
-    latitude: ALERT_DEMO_ORIGIN.latitude + Math.sin(angle) * ALERT_DEMO_RADIUS_DEG,
-    longitude: ALERT_DEMO_ORIGIN.longitude + Math.cos(angle) * ALERT_DEMO_RADIUS_DEG,
-    course: (((angle * 180) / Math.PI) + 90) % 360,
+    latitude: lat1 + (lat2 - lat1) * segT,
+    longitude: lon1 + (lon2 - lon1) * segT,
+    course: forward ? course : (course + 180) % 360,
   }
 }
 
@@ -260,7 +275,7 @@ function buildAlertDemoVehicle(serverTime: number): Vehicle {
   // instante en que se detuvo — si no, seguiría calculando una posición
   // nueva cada sondeo y el vehículo se vería mover estando quieto.
   const effectiveAtMs = isMoving ? serverTime : serverTime - (cyclePos - ALERT_DEMO_MOVING_MS)
-  const point = alertDemoOrbit(effectiveAtMs)
+  const point = alertDemoRoutePosition(effectiveAtMs)
   const speedKmh = isMoving ? 28 : 0
 
   const position: TraccarPosition = {

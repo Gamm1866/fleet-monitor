@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { ROUTE_POINTS, bearing } from '../../src/lib/demo-route'
 
 /**
  * Mantiene vivos a Camión 02 (moviéndose) y Camión 03 (detenido).
@@ -9,30 +10,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
  * estado. Vercel Cron llama a este endpoint cada 5 minutos; cada llamada le
  * manda al protocolo OsmAnd de Traccar una posición nueva con la hora
  * actual, así el silencio nunca pasa de unos minutos.
- *
- * Puntos fijos de una ruta real por Usaquén (Bogotá) — ya resueltos una vez
- * contra OSRM, no hace falta pedirlos de nuevo en cada corrida del cron.
  */
-const ROUTE_POINTS: [number, number][] = [
-  [4.710894, -74.07209],
-  [4.710512, -74.068215],
-  [4.708933, -74.062978],
-  [4.706611, -74.058103],
-  [4.704127, -74.053841],
-  [4.701595, -74.049866],
-  [4.699241, -74.045513],
-  [4.697912, -74.040505],
-]
-
-function bearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const toRad = (d: number) => (d * Math.PI) / 180
-  const dLon = toRad(lon2 - lon1)
-  const y = Math.sin(dLon) * Math.cos(toRad(lat2))
-  const x =
-    Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
-    Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon)
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
-}
 
 async function ping(
   uniqueId: string,
