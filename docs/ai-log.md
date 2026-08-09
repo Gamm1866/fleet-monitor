@@ -415,3 +415,84 @@ cuatro estados difieren en forma antes que en color.
 Cuando un canal tiene que soportar más de dos valores, conviene preguntarse si es el canal
 correcto. La respuesta no era elegir mejores colores: era dejar de pedirle al color que
 hiciera el trabajo de la forma.
+
+---
+
+## 013 — Un control fijo no sirve para dos layouts que cambian de rincón
+
+**Fecha:** 2026-08-08
+**Categoría:** UX / responsive
+
+**Qué propuso la IA**
+El control de zoom del mapa vivía en `bottomright`, tapado por la hoja del panel en
+mobile —ocupa todo el ancho inferior—. La corrección fue moverlo a `topright`.
+
+**Qué estaba mal**
+Arregló el síntoma que se le señaló sin revisar el otro layout. En desktop el panel de
+flota no es una hoja inferior: es una ventana flotante en `top-right` (ver
+`SidePanel.tsx`), exactamente donde el control acababa de mudarse. La corrección de mobile
+rompió desktop.
+
+**Cómo se corrigió**
+Ningún rincón fijo sirve para los dos layouts, porque el panel *también* cambia de rincón
+entre uno y otro. El control de zoom pasó a seguir el mismo breakpoint (`640px`) que ya usa
+el panel: `topright` en mobile, `bottomright` en desktop, con un listener de
+`matchMedia` que reposiciona el control si la ventana cruza el breakpoint en caliente.
+
+**Principio que queda**
+Una corrección verificada en un solo layout es una corrección a medias. Cuando dos
+elementos compiten por espacio en más de un breakpoint, la solución tiene que atarse al
+mismo breakpoint que el elemento con el que compite, no a una esquina fija.
+
+---
+
+## 014 — Un cron válido que la plataforma rechazó igual
+
+**Fecha:** 2026-08-08
+**Categoría:** Infraestructura
+
+**Qué se configuró**
+Un cron de Vercel (`vercel.json`) llamando cada 5 minutos a un endpoint que reenvía
+posición a los dispositivos demo —sin esto, cualquier dispositivo real decae a "sin
+contacto" a los 30 minutos y la demo se queda sin estados que mostrar.
+
+**Qué estaba mal**
+La expresión cron era válida y el endpoint funcionaba. El despliegue la rechazó igual:
+el plan Hobby de Vercel solo permite crones con frecuencia diaria, y `*/5 * * * *` corre
+más de una vez al día. El error apareció recién al desplegar a producción, no al escribir
+el código.
+
+**Cómo se corrigió**
+Se movió la misma llamada a un workflow de GitHub Actions (`schedule: cron: '*/5 * * * *'`)
+contra el mismo endpoint, sin costo ni upgrade de plan.
+
+**Principio que queda**
+Una configuración sintácticamente correcta puede seguir siendo inválida para el plan
+contratado. Los límites de la plataforma se verifican desplegando, no leyendo la
+documentación de la sintaxis.
+
+---
+
+## 015 — Un vehículo demo matemáticamente prolijo, geográficamente falso
+
+**Fecha:** 2026-08-08
+**Categoría:** UX / fidelidad de datos
+
+**Qué propuso la IA**
+El vehículo "Demo — se detiene a los 2 min" se movía en una órbita circular (seno/coseno)
+alrededor de un punto fijo: matemáticamente elegante, sin `if` de más.
+
+**Qué estaba mal**
+El círculo cruzaba de frente el Humedal Juan Amarillo y un parque metropolitano —no tenía
+ninguna relación con una calle real—. No lo marcó ningún test ni el build: se vio al mirar
+el mapa y notar que el marcador "saltaba" por terreno donde no hay vías.
+
+**Cómo se corrigió**
+Se reemplazó la fórmula de órbita por interpolación sobre una ruta de calles reales ya
+verificada —la misma que usa el cron para mover a Camión 02—, extraída a un módulo
+compartido (`src/lib/demo-route.ts`) para no duplicar las coordenadas en dos archivos.
+
+**Principio que queda**
+La misma lección de la entrada 004, en otra capa: "matemáticamente correcto" no es
+"visualmente correcto sobre un mapa real". Un dato sintético que representa movimiento
+físico tiene que atarse a geografía real, aunque sea más código que una fórmula cerrada.

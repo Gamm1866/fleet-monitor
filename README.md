@@ -71,7 +71,20 @@ existe control de acceso por usuario; la app enlaza allí y es de solo lectura.
 > o `demo/demo` en los servidores públicos de Traccar. A la fecha de este desarrollo esas
 > credenciales **ya no funcionan**: los cuatro servidores (`demo`, `demo2`, `demo3`,
 > `demo4`) responden `401`. Por eso la app usa una cuenta propia en `demo.traccar.org`, con
-> un dispositivo alimentado por el protocolo OsmAnd (puerto `5055`).
+> dispositivos alimentados por el protocolo OsmAnd (puerto `5055`).
+
+### Vehículos de demostración mantenidos vivos
+
+Traccar degrada cualquier dispositivo a "sin contacto" a los 30 minutos sin una posición
+nueva. Para que la demo siempre tenga los cuatro estados visibles sin reseeding manual, un
+workflow de **GitHub Actions** (`.github/workflows/refresh-demo.yml`) llama cada 5 minutos
+a `api/cron/refresh-demo.ts`, que reenvía posición a los dispositivos "en movimiento" y
+"detenido" sobre una ruta de calles reales en Usaquén (`src/lib/demo-route.ts`, compartida
+con el vehículo sintético que se detiene a los 2 minutos).
+
+Se descartó el cron nativo de Vercel: el plan Hobby solo permite frecuencia diaria, y el
+despliegue rechaza cualquier expresión más frecuente (ver
+[`docs/ai-log.md#014`](docs/ai-log.md)).
 
 ---
 
@@ -132,7 +145,10 @@ React 19 · TypeScript · Vite · Tailwind CSS v4 · TanStack Query · Leaflet �
 ## Estructura
 
 ```
-api/traccar/[resource].ts   Proxy serverless con allowlist
+api/
+├── traccar/[resource].ts   Proxy serverless con allowlist
+└── cron/refresh-demo.ts    Mantiene vivos los dispositivos demo (ver GitHub Actions)
+.github/workflows/          Cron cada 5 min hacia api/cron/refresh-demo.ts
 src/
 ├── components/
 │   ├── map/                Mapa Leaflet, interpolación del marcador, seguimiento
@@ -140,7 +156,8 @@ src/
 │   ├── ui/                 StatusPill, DataRow, AnimatedValue, Skeleton, ErrorState
 │   └── base/               Untitled UI, re-tematizado con los tokens del proyecto
 ├── hooks/                  useFleet (sondeo), useRoute (recorrido)
-├── lib/                    Cliente de Traccar, vocabulario de estados, formato
+├── lib/                    Cliente de Traccar, vocabulario de estados, formato,
+│                            ruta real compartida de los vehículos demo
 ├── pages/                  Monitor y sistema de diseño
 └── styles/                 Tokens en dos capas y estilos globales
 docs/ai-log.md              Bitácora de correcciones a la IA
