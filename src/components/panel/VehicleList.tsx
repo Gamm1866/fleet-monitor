@@ -1,3 +1,4 @@
+import { BatteryEmpty, BatteryFull, BatteryLow, BatteryMid } from '@untitledui/icons'
 import { cx } from '@/utils/cx'
 import type { VehicleStatus } from '@/lib/status'
 import { formatDecimal } from '@/lib/format'
@@ -17,6 +18,23 @@ const DOT: Record<VehicleStatus, string> = {
 }
 
 /**
+ * Icono + color por nivel de batería del rastreador (no del vehículo — ver
+ * la misma aclaración en VehiclePanel). Los mismos cortes que usa Traccar
+ * para "batería baja": por debajo de 20% es la señal que de verdad importa
+ * en una sala de control, el resto es solo información de contexto.
+ */
+function batteryIcon(level: number) {
+  if (level <= 20) return BatteryEmpty
+  if (level <= 50) return BatteryLow
+  if (level <= 80) return BatteryMid
+  return BatteryFull
+}
+
+function batteryColor(level: number): string {
+  return level <= 20 ? 'text-status-critical' : 'text-text-tertiary'
+}
+
+/**
  * Selector de vehículo.
  *
  * Botones dentro de una lista, no un `<select>`: el estado de cada vehículo se
@@ -29,6 +47,8 @@ export function VehicleList({ vehicles, selectedId, onSelect }: VehicleListProps
       <ul className="flex flex-col gap-2">
         {vehicles.map((vehicle) => {
           const isSelected = vehicle.id === selectedId
+          const BatteryIcon =
+            vehicle.batteryLevel === undefined ? undefined : batteryIcon(vehicle.batteryLevel)
 
           return (
             <li key={vehicle.id}>
@@ -51,6 +71,15 @@ export function VehicleList({ vehicles, selectedId, onSelect }: VehicleListProps
                 <span className="tabular text-data-sm text-text-tertiary">
                   {formatDecimal(vehicle.speedKmh)} km/h
                 </span>
+                {BatteryIcon ? (
+                  <span
+                    className={cx('flex shrink-0 items-center gap-1', batteryColor(vehicle.batteryLevel!))}
+                    aria-label={`Batería del rastreador: ${Math.round(vehicle.batteryLevel!)}%`}
+                  >
+                    <BatteryIcon aria-hidden="true" className="size-4" />
+                    <span className="tabular text-data-sm">{Math.round(vehicle.batteryLevel!)}%</span>
+                  </span>
+                ) : null}
               </button>
             </li>
           )

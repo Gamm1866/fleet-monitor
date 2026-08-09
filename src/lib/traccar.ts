@@ -150,7 +150,24 @@ export async function fetchRoute(deviceId: number): Promise<TraccarPosition[]> {
   // Los demo sintéticos no tienen recorrido real en Traccar: se calculan del
   // mismo modo que su posición actual, sin llamar al proxy.
   if (deviceId === ALERT_DEMO_ID) {
-    return [buildAlertDemoVehicle(Date.now()).position as TraccarPosition]
+    // La ruta PLANEADA completa, no solo la posición actual: un único punto
+    // no dibuja línea (VehicleMap la descarta si tiene menos de dos), y sin
+    // trazo visible el vehículo parece cruzar el mapa sin seguir ninguna
+    // calle. Mostrar ROUTE_POINTS entero deja ver, resaltado, el camino real
+    // que va a recorrer.
+    return ROUTE_POINTS.map(
+      ([latitude, longitude], index): TraccarPosition => ({
+        id: ALERT_DEMO_ID,
+        deviceId: ALERT_DEMO_ID,
+        latitude,
+        longitude,
+        speed: 0,
+        course: 0,
+        serverTime: new Date(0).toISOString(),
+        fixTime: new Date(index).toISOString(),
+        attributes: {},
+      }),
+    )
   }
 
   if (deviceId === STALE_DEMO_ID) {
@@ -353,8 +370,15 @@ function withDemoVehicles(vehicles: Vehicle[], serverTime: number): Vehicle[] {
   ]
 }
 
+// Camión 03 se dio de baja del demo: el cron ya no lo mantiene vivo (ver
+// api/cron/refresh-demo.ts), pero el dispositivo sigue existiendo en la
+// cuenta de Traccar y decaería a "sin contacto" en vez de desaparecer. Se
+// excluye acá para que no quede colgado en la flota sin que nadie lo pidió.
+const RETIRED_UNIQUE_IDS = new Set(['camion03-monitor-2026'])
+
 export async function fetchFleet(): Promise<FleetSnapshot> {
-  const { data: devices, serverTime } = await get<TraccarDevice[]>('devices')
+  const { data: allDevices, serverTime } = await get<TraccarDevice[]>('devices')
+  const devices = allDevices.filter((device) => !RETIRED_UNIQUE_IDS.has(device.uniqueId))
 
   if (devices.length === 0) {
     return { vehicles: withDemoVehicles([], serverTime), serverTime }
