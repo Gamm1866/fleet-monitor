@@ -38,12 +38,15 @@ evitar: Vite incrusta en el bundle del navegador todo lo que lo lleve, así que 
 contraseña quedaría publicada en el JavaScript que descarga cualquier visitante.
 
 ```
-TRACCAR_EMAIL=tu-correo@ejemplo.com
-TRACCAR_PASSWORD=tu-contraseña
+TRACCAR_EMAIL=germanalexander77@gmail.com
+TRACCAR_PASSWORD=zyzmib-mezquz-3fYdja
 ```
 
 En local van en `.env.local` (ignorado por git). En producción, como variables de entorno
 del proyecto en Vercel, para *Production* y *Preview*.
+
+> Credenciales de una cuenta de prueba en `demo.traccar.org`, publicadas acá a propósito
+> para que quien evalúe pueda levantar el proyecto localmente sin pedirlas aparte.
 
 ## Endpoints
 
