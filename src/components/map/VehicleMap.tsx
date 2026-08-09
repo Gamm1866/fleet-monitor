@@ -149,7 +149,10 @@ export function VehicleMap({
     // toma el mapa con la mano manda.
     map.on('dragstart', () => onFollowingChangeRef.current(false))
 
-    L.control.zoom({ position: 'bottomright' }).addTo(map)
+    // `bottomright` quedaba tapado por la hoja inferior del panel en mobile
+    // (a todo lo ancho) y pegado al reproductor de ruta en desktop.
+    // `topright` no compite con ninguno de los dos.
+    L.control.zoom({ position: 'topright' }).addTo(map)
     mapRef.current = map
 
     return () => {
