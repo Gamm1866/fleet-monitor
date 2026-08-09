@@ -207,7 +207,7 @@ export default function Monitor() {
 
             {/* Un solo panel: lista de flota o detalle del vehículo elegido,
                 nunca los dos a la vez. */}
-            {vehicles.length > 0 ? (
+            {vehicles.length > 0 || isPending ? (
               <SidePanel
                 vehicles={vehicles}
                 selected={selected}

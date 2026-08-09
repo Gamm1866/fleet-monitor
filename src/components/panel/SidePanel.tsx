@@ -3,6 +3,7 @@ import { ChevronLeft, LayoutRight } from '@untitledui/icons'
 import { cx } from '@/utils/cx'
 import { VehicleList } from '@/components/panel/VehicleList'
 import { VehiclePanel } from '@/components/panel/VehiclePanel'
+import { Skeleton } from '@/components/ui/Skeleton'
 import type { Vehicle } from '@/lib/traccar'
 
 interface SidePanelProps {
@@ -69,7 +70,11 @@ export function SidePanel({
         ) : (
           <span className="flex items-baseline gap-2">
             <span className="text-data-sm font-medium text-text-primary">Flota</span>
-            <span className="tabular text-data-sm text-text-tertiary">{vehicles.length}</span>
+            {loading && vehicles.length === 0 ? (
+              <Skeleton className="tabular text-data-sm">0</Skeleton>
+            ) : (
+              <span className="tabular text-data-sm text-text-tertiary">{vehicles.length}</span>
+            )}
           </span>
         )}
 
@@ -109,7 +114,7 @@ export function SidePanel({
                 outsideGeofenceName={outsideGeofenceName}
               />
             ) : (
-              <VehicleList vehicles={vehicles} onSelect={onSelect} />
+              <VehicleList vehicles={vehicles} onSelect={onSelect} loading={loading} />
             )}
           </div>
         </div>
