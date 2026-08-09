@@ -149,13 +149,22 @@ export function VehicleMap({
     // toma el mapa con la mano manda.
     map.on('dragstart', () => onFollowingChangeRef.current(false))
 
-    // `bottomright` quedaba tapado por la hoja inferior del panel en mobile
-    // (a todo lo ancho) y pegado al reproductor de ruta en desktop.
-    // `topright` no compite con ninguno de los dos.
-    L.control.zoom({ position: 'topright' }).addTo(map)
+    // `bottomright` queda tapado por la hoja inferior del panel en mobile (a
+    // todo lo ancho). `topright` queda tapado por el panel flotante en
+    // desktop (`sm:right-3 sm:top-3`). Ningún rincón fijo sirve para los dos
+    // layouts, así que el control sigue el mismo breakpoint que el panel.
+    const desktopQuery = window.matchMedia('(min-width: 640px)')
+    const zoomControl = L.control
+      .zoom({ position: desktopQuery.matches ? 'bottomright' : 'topright' })
+      .addTo(map)
+    const handleBreakpointChange = (event: MediaQueryListEvent) => {
+      zoomControl.setPosition(event.matches ? 'bottomright' : 'topright')
+    }
+    desktopQuery.addEventListener('change', handleBreakpointChange)
     mapRef.current = map
 
     return () => {
+      desktopQuery.removeEventListener('change', handleBreakpointChange)
       for (const cancel of animationsRef.current.values()) cancel()
       animationsRef.current.clear()
       iconStatesRef.current.clear()
