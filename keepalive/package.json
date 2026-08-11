@@ -1,0 +1,11 @@
+{
+  "name": "fleet-monitor-keepalive",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -77,9 +77,14 @@ function bearing(lat1: number, lon1: number, lat2: number, lon2: number): number
  * Mantiene vivo a Camión 02 (moviéndose).
  *
  * Sin esto, cualquier dispositivo real decae a "sin contacto" a los 30
- * minutos de la última posición. Vercel Cron llama a este endpoint cada 5
- * minutos; cada llamada le manda al protocolo OsmAnd de Traccar una posición
- * nueva con la hora actual, así el silencio nunca pasa de unos minutos.
+ * minutos de la última posición. Cada llamada le manda al protocolo OsmAnd de
+ * Traccar una posición nueva con la hora actual, así el silencio nunca pasa de
+ * unos minutos.
+ *
+ * Quien llama es el proceso de keepalive/ en Railway, cada 60 s. GitHub
+ * Actions también lo llama, pero como red de seguridad: promete una corrida
+ * cada 5 minutos y en la práctica entrega ~1 por hora, insuficiente para los
+ * 30 minutos de margen.
  */
 
 async function ping(
@@ -101,7 +106,7 @@ async function ping(
 export default async function handler(_req: IncomingMessage, res: ServerResponse): Promise<void> {
   // Camión 02: avanza de punto en punto sobre la ruta, ida y vuelta, cada
   // corrida del cron — así se ve realmente moverse de una llamada a otra.
-  const tickIndex = Math.floor(Date.now() / (5 * 60_000))
+  const tickIndex = Math.floor(Date.now() / 60_000)
   const cycle = ROUTE_POINTS.length * 2 - 2
   const pos = tickIndex % cycle
   const routeIndex = pos < ROUTE_POINTS.length ? pos : cycle - pos
